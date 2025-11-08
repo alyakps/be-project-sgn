@@ -10,12 +10,12 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         User::updateOrCreate(
-            ['email' => 'alyakps@gmail.com'],
-            ['password' => 'password123'] // otomatis ter-hash
-        );        
-        User::updateOrCreate(
-            ['email' => 'aan@gmail.com'],
-            ['password' => 'password123'] // otomatis ter-hash
+            ['email' => 'admin@example.com'],
+            [
+                'name'     => 'Admin',
+                'password' => 'admin123', // auto-hash (lihat model)
+                'role'     => 'admin',
+            ]
         );
     }
 }
