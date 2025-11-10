@@ -38,8 +38,14 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
+        $u = $request->user(); // user dari token Sanctum
         return response()->json([
-            'user' => $request->user()->only(['id','email']),
+            'id'         => $u->id,
+            'nik'        => $u->nik ?? null,
+            'name'       => $u->name,
+            'email'      => $u->email,
+            'role'       => $u->role ?? null,
+            'created_at' => $u->created_at,
         ]);
     }
 
