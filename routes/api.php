@@ -3,23 +3,42 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\HardCompetencyController;
 
-// ========== AUTH ==========
+/*
+|--------------------------------------------------------------------------
+| AUTH
+|--------------------------------------------------------------------------
+*/
 Route::prefix('auth')->group(function () {
     // Public
     Route::post('/login', [AuthController::class, 'login']);
 
-    // Butuh token, TIDAK perlu role admin
+    // Private
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
     });
 });
 
-// ========== ADMIN ==========
-Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
-    Route::post('/admin/import-karyawan', [AdminController::class, 'importKaryawan']);
-    Route::get('/admin/karyawan', [AdminController::class, 'listKaryawan']);
-    Route::delete('/admin/karyawan/{user}', [AdminController::class, 'deleteKaryawan']);
-    Route::delete('/admin/karyawan', [AdminController::class, 'bulkDelete']);
+/*
+|--------------------------------------------------------------------------
+| ADMIN (role:admin)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
+    Route::post('/import-karyawan', [AdminController::class, 'importKaryawan']);
+    Route::get('/karyawan', [AdminController::class, 'listKaryawan']);
+    Route::delete('/karyawan/{user}', [AdminController::class, 'deleteKaryawan']);
+    Route::delete('/karyawan', [AdminController::class, 'bulkDelete']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| USER-ONLY DATA (Per NIK)
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:sanctum')->group(function () {
+    // Hard competency (per user/NIK)
+    Route::get('/karyawan/{nik}/hard-competencies', [HardCompetencyController::class, 'index']);
 });

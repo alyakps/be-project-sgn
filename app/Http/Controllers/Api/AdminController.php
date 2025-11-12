@@ -67,7 +67,7 @@ class AdminController extends Controller
                       ->orWhere('email', 'like', "%{$search}%");
                 });
             })
-            ->select('id', 'name', 'email', 'role', 'created_at')
+            ->select('id', 'name', 'email', 'role', 'nik', 'created_at')
             ->orderByDesc('id')
             ->paginate($perPage);
 
