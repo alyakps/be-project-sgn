@@ -25,48 +25,55 @@ class KaryawanImport implements
 {
     use SkipsFailures;
 
-    /** @var int */
     protected int $imported = 0;
 
-    /**
-     * Cari key sebenarnya di array row berdasarkan alias-ali­as yang diizinkan.
-     * Normalisasi: lower-case + trim.
-     */
+    /** Temukan key asli di $row dari daftar alias (case-insensitive, trim) */
     private function resolveKey(array $row, array $aliases): ?string
     {
         $normalized = [];
         foreach ($row as $k => $_) {
-            $normalized[trim(mb_strtolower($k))] = $k;
+            $normalized[trim(mb_strtolower($k))] = $k; // lower -> original
         }
         foreach ($aliases as $alias) {
             $key = trim(mb_strtolower($alias));
-            if (isset($normalized[$key])) {
-                return $normalized[$key]; // k asli
-            }
+            if (isset($normalized[$key])) return $normalized[$key];
         }
         return null;
     }
 
     public function model(array $row)
     {
-        // dukung variasi header
+        // --- dukung variasi header ---
+        $kNik   = $this->resolveKey($row, ['nik', 'NIK']);
         $kNama  = $this->resolveKey($row, ['nama', 'name']);
-        $kEmail = $this->resolveKey($row, ['email', 'e-mail']);
-        $kPass  = $this->resolveKey($row, ['password', 'kata sandi', 'sandi']);
+        $kEmail = $this->resolveKey($row, ['email', 'e-mail', 'e_mail']);
+        $kPass  = $this->resolveKey($row, ['password', 'kata sandi', 'sandi', 'pwd']);
 
-        $name  = $kNama  ? trim((string)($row[$kNama]  ?? '')) : '';
-        $email = $kEmail ? trim((string)($row[$kEmail] ?? '')) : '';
-        $pass  = $kPass  ? (string)($row[$kPass] ?? '') : '';
+        // ambil nilai (string) + trim
+        $nik   = $kNik   ? (string)($row[$kNik]   ?? '') : '';
+        $name  = $kNama  ? (string)($row[$kNama]  ?? '') : '';
+        $email = $kEmail ? (string)($row[$kEmail] ?? '') : '';
+        $pass  = $kPass  ? (string)($row[$kPass]  ?? '') : '';
 
-        // Jika ada kolom krusial yang kosong, biarkan rules() yang menandai failure
-        // tetapi return null agar tidak membuat model invalid.
-        if ($name === '' || $email === '' || $pass === '') {
-            return null;
+        $nik   = trim($nik);
+        $name  = trim($name);
+        $email = trim($email);
+        $pass  = trim($pass);
+
+        // Normalisasi NIK agar tidak jadi 123.0 dan tetap berupa string
+        if ($nik !== '' && is_numeric($nik)) {
+            $nik = rtrim(rtrim((string)$nik, '0'), '.');
+        }
+
+        // Default password jika kosong (opsional)
+        if ($pass === '') {
+            $pass = 'password123';
         }
 
         $this->imported++;
 
         return new User([
+            'nik'      => $nik,
             'name'     => $name,
             'email'    => $email,
             'password' => Hash::make($pass),
@@ -74,41 +81,44 @@ class KaryawanImport implements
         ]);
     }
 
-    /**
-     * Validasi per baris (berbasis heading row yang sudah dinormalisasi oleh package).
-     * Catatan: kita cover dua kemungkinan header untuk nama: 'nama' dan 'name'.
-     */
+    /** Validasi per baris */
     public function rules(): array
     {
         return [
-            // salah satu wajib ada: 'nama' ATAU 'name'
+            // NIK wajib, hanya digit, unik
+            '*.nik'      => ['required', 'regex:/^\d+$/', Rule::unique('users','nik')],
+
+            // Salah satu wajib: nama atau name
             '*.nama'     => ['required_without:*.name'],
             '*.name'     => ['required_without:*.nama'],
 
-            'email' => ['required','email', Rule::unique('users','email')],
-            '*.password' => ['required','string','min:6'],
+            // Email wajib & unik
+            '*.email'    => ['required', 'email', Rule::unique('users','email')],
+
+            // Password boleh kosong (akan diisi default). Ubah ke 'required' jika wajib.
+            '*.password' => ['nullable', 'string', 'min:6'],
         ];
     }
 
     public function customValidationMessages(): array
     {
         return [
+            '*.nik.required' => 'Kolom NIK wajib diisi.',
+            '*.nik.regex'    => 'NIK hanya boleh berisi angka.',
+            '*.nik.unique'   => 'NIK sudah terdaftar.',
+
             '*.nama.required_without' => 'Kolom nama atau name wajib diisi.',
             '*.name.required_without' => 'Kolom name atau nama wajib diisi.',
-            '*.email.required'        => 'Kolom email wajib diisi.',
-            '*.email.email'           => 'Format email tidak valid.',
-            '*.email.unique'          => 'Email sudah terdaftar.',
-            '*.password.required'     => 'Kolom password wajib diisi.',
-            '*.password.min'          => 'Password minimal 6 karakter.',
+
+            '*.email.required' => 'Kolom email wajib diisi.',
+            '*.email.email'    => 'Format email tidak valid.',
+            '*.email.unique'   => 'Email sudah terdaftar.',
+
+            '*.password.min'   => 'Password minimal 6 karakter.',
         ];
     }
 
-    /** Counter sukses */
-    public function getImportedCount(): int
-    {
-        return $this->imported;
-    }
-
+    public function getImportedCount(): int { return $this->imported; }
     public function batchSize(): int { return 500; }
     public function chunkSize(): int { return 500; }
 }
