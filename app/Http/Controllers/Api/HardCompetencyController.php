@@ -10,17 +10,6 @@ use Illuminate\Http\Request;
 class HardCompetencyController extends Controller
 {
     /**
-<<<<<<< HEAD
-     * Tampilkan daftar hard competency berdasarkan NIK user yang login.
-     * GET /api/karyawan/{nik}/hard-competencies
-     */
-    public function index(Request $request, string $nik)
-    {
-        $user = $request->user();
-
-        // ✅ Pastikan user hanya bisa akses datanya sendiri
-        if ($user->nik !== $nik) {
-=======
      * (KARYAWAN + ADMIN)
      *
      * GET /api/karyawan/{nik}/hard-competencies
@@ -37,30 +26,11 @@ class HardCompetencyController extends Controller
 
         // ❌ Kalau bukan admin & NIK bukan miliknya sendiri → tolak
         if ($user->role !== 'admin' && $user->nik !== $nik) {
->>>>>>> 8be18af (update api hard competency)
             return response()->json([
                 'message' => 'Forbidden: Anda tidak bisa mengakses data karyawan lain.'
             ], 403);
         }
 
-<<<<<<< HEAD
-        $data = HardCompetency::where('nik', $nik)
-            ->select([
-                'nik',
-                'id_kompetensi',
-                'kode',
-                'nama_kompetensi',
-                'job_family_kompetensi',
-                'sub_job_family_kompetensi',
-                'status',
-                'nilai',
-                'deskripsi'
-            ])
-            ->orderBy('nilai', 'desc')
-            ->get();
-
-        return HardCompetencyResource::collection($data);
-=======
         $search  = trim((string) $request->get('q', ''));
         $perPage = (int) $request->get('per_page', 10);
 
@@ -70,6 +40,7 @@ class HardCompetencyController extends Controller
 
         $paginator = $query->paginate($perPage);
 
+        // boleh pakai resource langsung, biar simple
         return HardCompetencyResource::collection($paginator)
             ->additional([
                 'meta' => [
@@ -90,10 +61,6 @@ class HardCompetencyController extends Controller
      *  - nik      : filter per NIK tertentu
      *  - q        : keyword (kode/nama/job_family/sub_job/deskripsi)
      *  - per_page : default 10
-     *
-     * Admin bisa:
-     *  - lihat semua data
-     *  - filter per NIK
      */
     public function adminIndex(Request $request)
     {
@@ -109,14 +76,21 @@ class HardCompetencyController extends Controller
 
         $paginator = $query->paginate($perPage);
 
-        return HardCompetencyResource::collection($paginator)
-            ->additional([
-                'meta' => [
-                    'current_page' => $paginator->currentPage(),
-                    'per_page'     => $paginator->perPage(),
-                    'total'        => $paginator->total(),
-                ],
-            ]);
->>>>>>> 8be18af (update api hard competency)
+        // ✅ format pagination mirip listKaryawan
+        return response()->json([
+            'data' => HardCompetencyResource::collection($paginator->items()),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
+                'last_page'    => $paginator->lastPage(),
+            ],
+            'links' => [
+                'first' => $paginator->url(1),
+                'prev'  => $paginator->previousPageUrl(),
+                'next'  => $paginator->nextPageUrl(),
+                'last'  => $paginator->url($paginator->lastPage()),
+            ],
+        ]);
     }
 }

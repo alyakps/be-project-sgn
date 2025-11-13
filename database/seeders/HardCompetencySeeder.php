@@ -9,18 +9,12 @@ class HardCompetencySeeder extends Seeder
 {
     public function run(): void
     {
-<<<<<<< HEAD
-        HardCompetency::insert([
-            [
-                'nik' => '1000167',
-=======
         $rows = [
             // ============================
             // DATA KARYAWAN 1 — BUDI
             // ============================
             [
                 'nik' => '5025211174',
->>>>>>> 8be18af (update api hard competency)
                 'id_kompetensi' => '4821',
                 'kode' => 'HAK.MAK.008',
                 'nama_kompetensi' => 'Verifikasi Bahan Baku',
@@ -29,17 +23,9 @@ class HardCompetencySeeder extends Seeder
                 'status' => 'tercapai',
                 'nilai' => 92,
                 'deskripsi' => 'Memastikan bahan baku memenuhi standar mutu sebelum proses produksi dimulai.',
-<<<<<<< HEAD
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'nik' => '1000167',
-=======
             ],
             [
                 'nik' => '5025211174',
->>>>>>> 8be18af (update api hard competency)
                 'id_kompetensi' => '1942',
                 'kode' => 'HAK.MAK.009',
                 'nama_kompetensi' => 'Pengawasan Proses Giling',
@@ -48,12 +34,6 @@ class HardCompetencySeeder extends Seeder
                 'status' => 'tidak tercapai',
                 'nilai' => 65,
                 'deskripsi' => 'Melakukan pengawasan jalannya proses penggilingan untuk menjaga kualitas hasil.',
-<<<<<<< HEAD
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-        ]);
-=======
             ],
 
             // ============================
@@ -95,6 +75,5 @@ class HardCompetencySeeder extends Seeder
                 ])
             );
         }
->>>>>>> 8be18af (update api hard competency)
     }
 }
