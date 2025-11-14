@@ -40,8 +40,12 @@ class HardCompetencyController extends Controller
 
         $paginator = $query->paginate($perPage);
 
-        return HardCompetencyResource::collection($paginator)->additional([
-            'meta' => [
+        // Ubah koleksi model jadi array pakai Resource, TANPA nambah meta/links bawaan lagi
+        $items = HardCompetencyResource::collection($paginator->items())->resolve();
+
+        return response()->json([
+            'data'  => $items,
+            'meta'  => [
                 'current_page' => $paginator->currentPage(),
                 'per_page'     => $paginator->perPage(),
                 'total'        => $paginator->total(),
@@ -72,7 +76,7 @@ class HardCompetencyController extends Controller
         $search  = trim((string) $request->get('q', ''));
         $nik     = trim((string) $request->get('nik', ''));
         $perPage = (int) $request->get('per_page', 10);
-        $tahun   = $request->integer('tahun');
+        $tahun   = $request->integer('tahun'); // bisa null
 
         $query = HardCompetency::query()
             ->when($nik !== '', fn ($q) => $q->forNik($nik))
@@ -83,8 +87,11 @@ class HardCompetencyController extends Controller
 
         $paginator = $query->paginate($perPage);
 
-        return HardCompetencyResource::collection($paginator)->additional([
-            'meta' => [
+        $items = HardCompetencyResource::collection($paginator->items())->resolve();
+
+        return response()->json([
+            'data'  => $items,
+            'meta'  => [
                 'current_page' => $paginator->currentPage(),
                 'per_page'     => $paginator->perPage(),
                 'total'        => $paginator->total(),
