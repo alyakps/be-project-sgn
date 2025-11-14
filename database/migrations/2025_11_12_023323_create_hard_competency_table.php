@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('hard_competencies', function (Blueprint $table) {
             $table->id();
             $table->string('nik', 32)->index();                     // ID unik user
+            $table->unsignedSmallInteger('tahun')->index();         // ✅ tahun penilaian, misal 2025
             $table->string('id_kompetensi', 32);                    // Contoh: 4821
             $table->string('kode', 64)->index();                    // Contoh: HAK.MAK.008
             $table->string('nama_kompetensi', 255);
@@ -24,14 +25,11 @@ return new class extends Migration
             $table->text('deskripsi')->nullable();
             $table->timestamps();
 
-            // Jika 1 user hanya boleh punya 1 entry per kode
-            $table->unique(['nik', 'kode']);
+            // ✅ 1 user boleh punya kode yang sama di tahun berbeda
+            $table->unique(['nik', 'kode', 'tahun']);
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('hard_competencies');

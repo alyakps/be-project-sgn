@@ -30,6 +30,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/karyawan', [AdminController::class, 'listKaryawan']);
     Route::delete('/karyawan/{user}', [AdminController::class, 'deleteKaryawan']);
     Route::delete('/karyawan', [AdminController::class, 'bulkDelete']);
+    Route::post('/import-hard-competencies', [AdminController::class, 'importHardCompetencies']);
 
     // ✅ Admin lihat semua hard competency
     Route::get('/hard-competencies', [HardCompetencyController::class, 'adminIndex']);

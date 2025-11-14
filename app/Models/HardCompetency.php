@@ -14,6 +14,7 @@ class HardCompetency extends Model
 
     protected $fillable = [
         'nik',
+        'tahun', // ✅
         'id_kompetensi',
         'kode',
         'nama_kompetensi',
@@ -26,11 +27,21 @@ class HardCompetency extends Model
 
     protected $casts = [
         'nilai' => 'integer',
+        'tahun' => 'integer', // ✅
     ];
 
     public function scopeForNik(Builder $query, string $nik): Builder
     {
         return $query->where('nik', $nik);
+    }
+
+    public function scopeForYear(Builder $query, ?int $tahun): Builder
+    {
+        if (!$tahun) {
+            return $query;
+        }
+
+        return $query->where('tahun', $tahun);
     }
 
     public function scopeSearch(Builder $query, ?string $term): Builder

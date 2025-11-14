@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Imports\KaryawanImport;
+use App\Imports\HardCompetencyImport;
 use App\Models\User;
 use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
@@ -41,6 +42,43 @@ class AdminController extends Controller
             'sukses'  => $import->getImportedCount(),
             'gagal'   => $failures,
             'catatan' => 'Header yang diterima: nama/name, email, password. Case-insensitive & auto-trim.',
+        ]);
+    }
+
+    /**
+     * Import hard competency dari Excel/CSV (hanya admin).
+     * Body: multipart/form-data
+     *  - file  : .xlsx/.xls/.csv
+     *  - tahun : 4 digit (misal 2025) -> dipilih di FE, tidak ada di Excel
+     */
+    public function importHardCompetencies(Request $request)
+    {
+        $data = $request->validate([
+            'file'  => ['required', 'file', 'mimes:xlsx,xls,csv'],
+            'tahun' => ['required', 'integer', 'min:2000', 'max:2100'],
+        ]);
+
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Tahun diambil dari FE, bukan dari file Excel
+        $import = new HardCompetencyImport($data['tahun']);
+        Excel::import($import, $request->file('file'));
+
+        $failures = collect($import->failures())->map(function ($f) {
+            return [
+                'row'    => $f->row(),
+                'errors' => $f->errors(),
+                'values' => $f->values(),
+            ];
+        })->values();
+
+        return response()->json([
+            'message' => 'Proses import hard competency selesai.',
+            'tahun'   => $data['tahun'],
+            'sukses'  => $import->getImportedCount(),
+            'gagal'   => $failures,
         ]);
     }
 

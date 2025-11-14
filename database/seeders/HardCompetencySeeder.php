@@ -15,6 +15,7 @@ class HardCompetencySeeder extends Seeder
             // ============================
             [
                 'nik' => '5025211174',
+                'tahun' => 2025,
                 'id_kompetensi' => '4821',
                 'kode' => 'HAK.MAK.008',
                 'nama_kompetensi' => 'Verifikasi Bahan Baku',
@@ -26,6 +27,7 @@ class HardCompetencySeeder extends Seeder
             ],
             [
                 'nik' => '5025211174',
+                'tahun' => 2025,
                 'id_kompetensi' => '1942',
                 'kode' => 'HAK.MAK.009',
                 'nama_kompetensi' => 'Pengawasan Proses Giling',
@@ -41,6 +43,7 @@ class HardCompetencySeeder extends Seeder
             // ============================
             [
                 'nik' => '5025211175',
+                'tahun' => 2025,
                 'id_kompetensi' => '5001',
                 'kode' => 'HAK.MNT.001',
                 'nama_kompetensi' => 'Pemeriksaan Mesin Harian',
@@ -52,6 +55,7 @@ class HardCompetencySeeder extends Seeder
             ],
             [
                 'nik' => '5025211175',
+                'tahun' => 2025,
                 'id_kompetensi' => '5002',
                 'kode' => 'HAK.SFT.002',
                 'nama_kompetensi' => 'Penerapan SOP Keselamatan',
@@ -67,7 +71,8 @@ class HardCompetencySeeder extends Seeder
             HardCompetency::updateOrCreate(
                 [
                     'nik'  => $row['nik'],
-                    'kode' => $row['kode'], // KUNCI UNIK
+                    'kode' => $row['kode'],
+                    'tahun' => $row['tahun'], // KUNCI UNIK
                 ],
                 array_merge($row, [
                     'updated_at' => now(),
