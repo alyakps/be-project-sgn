@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\HardCompetencyController;
+use App\Http\Controllers\Api\DashboardKaryawanController;
 
 /*
 |--------------------------------------------------------------------------
@@ -44,4 +45,5 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
 Route::middleware('auth:sanctum')->group(function () {
     // ✅ Karyawan (dan admin) lihat hard competency by NIK
     Route::get('/karyawan/{nik}/hard-competencies', [HardCompetencyController::class, 'indexSelf']);
+    Route::get('/dashboard/karyawan/summary', [DashboardKaryawanController::class, 'summary']);
 });
