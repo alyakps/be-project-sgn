@@ -34,9 +34,6 @@ class HardCompetencyImport implements
 
     public function model(array $row)
     {
-        // Kalau dari Excel masih ada kolom "id" / "no", biarin aja, TAPI JANGAN dipakai.
-        // Kita ambil hanya kolom yang kita butuh.
-
         $nik       = trim((string)($row['nik'] ?? ''));
         $idKom     = trim((string)($row['id_kompetensi'] ?? ''));
         $kode      = trim((string)($row['kode'] ?? ''));
@@ -47,27 +44,27 @@ class HardCompetencyImport implements
         $nilaiRaw  = $row['nilai'] ?? null;
         $deskripsi = trim((string)($row['deskripsi'] ?? ''));
 
-        // Normalisasi status ke ENUM di DB (migration: 'tercapai', 'tidak tercapai')
+        // Normalisasi status
         $statusLower = mb_strtolower($statusRaw);
         if ($statusLower === 'tercapai') {
             $status = 'tercapai';
         } elseif ($statusLower === 'tidak tercapai') {
             $status = 'tidak tercapai';
         } else {
-            $status = $statusLower; // biar kelihatan error di validation
+            $status = $statusLower; // biar ketangkep di validation
         }
 
         $nilai = is_null($nilaiRaw) ? null : (int) $nilaiRaw;
 
-        // Upsert manual: ini langsung nembak DB
+        // ✅ Upsert pakai nik + id_kompetensi + tahun
         HardCompetency::updateOrCreate(
             [
-                'nik'   => $nik,
-                'kode'  => $kode,
-                'tahun' => $this->tahun,
+                'nik'           => $nik,
+                'id_kompetensi' => $idKom,
+                'tahun'         => $this->tahun,
             ],
             [
-                'id_kompetensi'             => $idKom,
+                'kode'                      => $kode,
                 'nama_kompetensi'           => $nama,
                 'job_family_kompetensi'     => $jobFam,
                 'sub_job_family_kompetensi' => $subJob ?: null,
@@ -79,7 +76,7 @@ class HardCompetencyImport implements
 
         $this->imported++;
 
-        // ⛔ PENTING: return null supaya Excel TIDAK mencoba insert lagi
+        // penting: jangan return model lagi
         return null;
     }
 

@@ -70,9 +70,9 @@ class HardCompetencySeeder extends Seeder
         foreach ($rows as $row) {
             HardCompetency::updateOrCreate(
                 [
-                    'nik'  => $row['nik'],
-                    'kode' => $row['kode'],
-                    'tahun' => $row['tahun'], // KUNCI UNIK
+                    'nik'           => $row['nik'],
+                    'id_kompetensi' => $row['id_kompetensi'],
+                    'tahun'         => $row['tahun'], // kunci unik
                 ],
                 array_merge($row, [
                     'updated_at' => now(),
