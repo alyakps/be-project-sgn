@@ -36,6 +36,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/karyawan/{nik}/hard-competencies', [HardCompetencyController::class, 'adminByNik']);
     Route::get('/soft-competencies', [SoftCompetencyController::class, 'adminIndex']);
     Route::get('/karyawan/{nik}/soft-competencies', [SoftCompetencyController::class, 'adminByNik']);
+    Route::post('/import-soft-competencies', [AdminController::class, 'importSoftCompetencies']);
 });
 
 /*
