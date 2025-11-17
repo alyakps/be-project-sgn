@@ -10,25 +10,50 @@ use Illuminate\Http\Request;
 class HardCompetencyController extends Controller
 {
     /**
-     * (KARYAWAN + ADMIN)
+     * (KARYAWAN ONLY)
      *
-     * GET /api/karyawan/{nik}/hard-competencies
+     * GET /api/karyawan/hard-competencies
+     *
      * Query (optional):
      *  - q        : keyword (kode/nama/job_family/sub_job/deskripsi)
      *  - tahun    : tahun penilaian
      *  - per_page : default 10
+     *
+     * NIK diambil dari user yang login, jadi karyawan
+     * hanya bisa melihat kompetensi miliknya sendiri.
      */
-    public function indexSelf(Request $request, string $nik)
+    public function indexSelf(Request $request)
     {
         $user = $request->user();
 
-        // Karyawan hanya boleh akses NIK miliknya sendiri
-        if ($user->role !== 'admin' && $user->nik !== $nik) {
+        if (!$user || !$user->nik) {
             return response()->json([
-                'message' => 'Forbidden: Anda tidak bisa mengakses data karyawan lain.',
-            ], 403);
+                'message' => 'User tidak memiliki NIK, tidak bisa mengambil data hard competency.',
+            ], 422);
         }
 
+        return $this->buildListForNik($request, $user->nik);
+    }
+
+    /**
+     * (ADMIN ONLY)
+     *
+     * GET /api/admin/karyawan/{nik}/hard-competencies
+     *
+     * Admin bisa melihat hard competency karyawan tertentu berdasarkan NIK.
+     */
+    public function adminByNik(Request $request, string $nik)
+    {
+        // Middleware sudah menjamin user adalah admin,
+        // jadi di sini tinggal ambil data berdasarkan NIK.
+        return $this->buildListForNik($request, $nik);
+    }
+
+    /**
+     * Helper untuk build list hard competency berdasarkan NIK.
+     */
+    protected function buildListForNik(Request $request, string $nik)
+    {
         $search  = trim((string) $request->get('q', ''));
         $perPage = (int) $request->get('per_page', 10);
         $tahun   = $request->integer('tahun'); // bisa null
@@ -40,7 +65,6 @@ class HardCompetencyController extends Controller
 
         $paginator = $query->paginate($perPage);
 
-        // Ubah koleksi model jadi array pakai Resource, TANPA nambah meta/links bawaan lagi
         $items = HardCompetencyResource::collection($paginator->items())->resolve();
 
         return response()->json([
@@ -65,11 +89,7 @@ class HardCompetencyController extends Controller
      *
      * GET /api/admin/hard-competencies
      *
-     * Query (optional):
-     *  - nik      : filter per NIK tertentu
-     *  - q        : keyword (kode/nama/job_family/sub_job/deskripsi)
-     *  - tahun    : tahun penilaian
-     *  - per_page : default 10
+     * List global dengan filter (sudah ada, tetap).
      */
     public function adminIndex(Request $request)
     {

@@ -14,7 +14,6 @@ use App\Http\Controllers\Api\DashboardKaryawanController;
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 
-    // Private
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
@@ -33,17 +32,20 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::delete('/karyawan', [AdminController::class, 'bulkDelete']);
     Route::post('/import-hard-competencies', [AdminController::class, 'importHardCompetencies']);
 
-    // ✅ Admin lihat semua hard competency
+    // Admin lihat semua hard competency (list global)
     Route::get('/hard-competencies', [HardCompetencyController::class, 'adminIndex']);
+
+    // 🟢 Admin lihat hard competency per NIK tertentu
+    Route::get('/karyawan/{nik}/hard-competencies', [HardCompetencyController::class, 'adminByNik']);
 });
 
 /*
 |--------------------------------------------------------------------------
-| USER-ONLY DATA (Per NIK)
+| KARYAWAN (role:karyawan)
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
-    // ✅ Karyawan (dan admin) lihat hard competency by NIK
-    Route::get('/karyawan/{nik}/hard-competencies', [HardCompetencyController::class, 'indexSelf']);
+// 🟢 Karyawan cuma bisa lihat data miliknya sendiri (pakai NIK dari token)
+Route::middleware(['auth:sanctum', 'role:karyawan'])->group(function () {
+    Route::get('/karyawan/hard-competencies', [HardCompetencyController::class, 'indexSelf']);
     Route::get('/dashboard/karyawan/summary', [DashboardKaryawanController::class, 'summary']);
 });
