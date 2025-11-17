@@ -1,0 +1,60 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
+
+class SoftCompetency extends Model
+{
+    use HasFactory;
+
+    protected $table = 'soft_competencies';
+
+    protected $fillable = [
+        'nik',
+        'tahun',
+        'id_kompetensi',
+        'kode',
+        'nama_kompetensi',
+        'status',
+        'nilai',
+        'deskripsi',
+    ];
+
+    protected $casts = [
+        'nilai' => 'integer',
+        'tahun' => 'integer',
+    ];
+
+    public function scopeForNik(Builder $query, string $nik): Builder
+    {
+        return $query->where('nik', $nik);
+    }
+
+    public function scopeForYear(Builder $query, ?int $tahun): Builder
+    {
+        if (!$tahun) {
+            return $query;
+        }
+
+        return $query->where('tahun', $tahun);
+    }
+
+    public function scopeSearch(Builder $query, ?string $term): Builder
+    {
+        if (empty($term)) {
+            return $query;
+        }
+
+        $term = "%{$term}%";
+
+        return $query->where(function ($q) use ($term) {
+            $q->where('kode', 'like', $term)
+              ->orWhere('nama_kompetensi', 'like', $term)
+              ->orWhere('status', 'like', $term)
+              ->orWhere('deskripsi', 'like', $term);
+        });
+    }
+}

@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\HardCompetencyController;
 use App\Http\Controllers\Api\DashboardKaryawanController;
+use App\Http\Controllers\Api\SoftCompetencyController;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,12 +32,10 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::delete('/karyawan/{user}', [AdminController::class, 'deleteKaryawan']);
     Route::delete('/karyawan', [AdminController::class, 'bulkDelete']);
     Route::post('/import-hard-competencies', [AdminController::class, 'importHardCompetencies']);
-
-    // Admin lihat semua hard competency (list global)
     Route::get('/hard-competencies', [HardCompetencyController::class, 'adminIndex']);
-
-    // 🟢 Admin lihat hard competency per NIK tertentu
     Route::get('/karyawan/{nik}/hard-competencies', [HardCompetencyController::class, 'adminByNik']);
+    Route::get('/soft-competencies', [SoftCompetencyController::class, 'adminIndex']);
+    Route::get('/karyawan/{nik}/soft-competencies', [SoftCompetencyController::class, 'adminByNik']);
 });
 
 /*
@@ -48,4 +47,5 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
 Route::middleware(['auth:sanctum', 'role:karyawan'])->group(function () {
     Route::get('/karyawan/hard-competencies', [HardCompetencyController::class, 'indexSelf']);
     Route::get('/dashboard/karyawan/summary', [DashboardKaryawanController::class, 'summary']);
+    Route::get('/karyawan/soft-competencies', [SoftCompetencyController::class, 'indexSelf']);
 });
