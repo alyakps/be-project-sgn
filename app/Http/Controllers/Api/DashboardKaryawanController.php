@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\HardCompetency;
+use App\Models\SoftCompetency; // ⬅️ TAMBAHKAN INI
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
@@ -22,22 +23,8 @@ class DashboardKaryawanController extends Controller
      *   "data": {
      *     "nik": "5025211174",
      *     "tahun": 2025,
-     *     "hard_competency": {
-     *       "total": 10,
-     *       "status_counts": {
-     *         "tercapai": 7,
-     *         "tidak_tercapai": 3
-     *       },
-     *       "avg_nilai": 82.5
-     *     },
-     *     "soft_competency": {
-     *       "total": 5,
-     *       "status_counts": {
-     *         "tercapai": 4,
-     *         "tidak_tercapai": 1
-     *       },
-     *       "avg_nilai": 79.2
-     *     }
+     *     "hard_competency": {...},
+     *     "soft_competency": {...}
      *   }
      * }
      */
@@ -55,14 +42,19 @@ class DashboardKaryawanController extends Controller
         $tahun = $request->integer('tahun');
 
         // HARD COMPETENCY
-        $hardQuery = HardCompetency::forNik($user->nik)->forYear($tahun);
+        $hardQuery   = HardCompetency::forNik($user->nik)->forYear($tahun);
         $hardSummary = $this->buildSummary($hardQuery);
+
+        // SOFT COMPETENCY (❗baru)
+        $softQuery   = SoftCompetency::forNik($user->nik)->forYear($tahun);
+        $softSummary = $this->buildSummary($softQuery);
 
         return response()->json([
             'data' => [
                 'nik'   => $user->nik,
                 'tahun' => $tahun, // bisa null kalau tidak difilter
-                'hard_competency' => $hardSummary,
+                'hard_competency'  => $hardSummary,
+                'soft_competency'  => $softSummary, // ⬅️ baru
             ],
         ]);
     }
