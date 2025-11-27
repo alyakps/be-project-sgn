@@ -27,7 +27,7 @@ return new class extends Migration
             $table->string('pendidikan', 100)->nullable();
 
             // 5. Nomor KTP
-            $table->string('no_ktp', 50)->nullable();
+            $table->string('no_ktp', 16)->nullable();
 
             // 6. Tempat Lahir
             $table->string('tempat_lahir', 100)->nullable();
@@ -44,6 +44,9 @@ return new class extends Migration
 
             // 10. Jabatan Terakhir
             $table->string('jabatan_terakhir', 150)->nullable();
+
+            // Tambahan: Unit Kerja
+            $table->string('unit_kerja', 100)->nullable();
 
             // 11. Alamat Rumah
             $table->text('alamat_rumah')->nullable();

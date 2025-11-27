@@ -179,6 +179,7 @@ class EmployeeProfileController extends Controller
             'jenis_kelamin'     => $profile->jenis_kelamin,
             'agama'             => $profile->agama,
             'jabatan_terakhir'  => $profile->jabatan_terakhir,
+            'unit_kerja'        => $profile->unit_kerja,
             'alamat_rumah'      => $profile->alamat_rumah,
             'handphone'         => $profile->handphone,
             'email_pribadi'     => $profile->email_pribadi,

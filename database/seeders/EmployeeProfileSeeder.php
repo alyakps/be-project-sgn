@@ -99,6 +99,7 @@ class EmployeeProfileSeeder extends Seeder
                     'jenis_kelamin'     => 'Laki-laki',
                     'agama'             => 'Islam',
                     'jabatan_terakhir'  => 'Staff',
+                    'unit_kerja'        => 'IT Department',
                     'alamat_rumah'      => 'Alamat default',
                     'handphone'         => '081234567890',
                     'email_pribadi'     => $u->email,

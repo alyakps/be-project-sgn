@@ -23,6 +23,7 @@ class EmployeeProfile extends Model
         'jenis_kelamin',
         'agama',
         'jabatan_terakhir',
+        'unit_kerja',
         'alamat_rumah',
         'handphone',
         'email_pribadi',

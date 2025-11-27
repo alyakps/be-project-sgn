@@ -27,6 +27,7 @@ class UpdateEmployeeProfileRequest extends FormRequest
             'jenis_kelamin'     => ['nullable', 'string', 'max:20'],
             'agama'             => ['nullable', 'string', 'max:50'],
             'jabatan_terakhir'  => ['nullable', 'string', 'max:150'],
+            'unit_kerja'        => ['nullable', 'string', 'max:100'],
             'alamat_rumah'      => ['nullable', 'string'],
             'handphone'         => ['nullable', 'string', 'max:50'],
             'email_pribadi'     => ['nullable', 'email', 'max:150'],
