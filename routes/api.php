@@ -39,7 +39,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/karyawan/{nik}/soft-competencies', [SoftCompetencyController::class, 'adminByNik']);
     Route::post('/import-soft-competencies', [AdminController::class, 'importSoftCompetencies']);
     Route::get('/employee-profiles', [EmployeeProfileController::class, 'adminIndex']);
-    Route::get('/karyawan/{user}/profile', [EmployeeProfileController::class, 'adminShowByUser']);
+    Route::get('/karyawan/{nik}/profile', [EmployeeProfileController::class, 'adminShowByNik']);
 });
 
 /*

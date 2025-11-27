@@ -126,24 +126,26 @@ class EmployeeProfileController extends Controller
     }
 
     /**
-     * (ADMIN) GET /api/admin/karyawan/{user}/profile
-     * Admin lihat profil satu karyawan berdasarkan user_id
+     * (ADMIN) GET /api/admin/karyawan/{nik}/profile
+     * Admin lihat profil satu karyawan berdasarkan NIK.
      */
-    public function adminShowByUser(User $user)
+    public function adminShowByNik(string $nik)
     {
-        $user->load('profile');
-
-        $profile = $user->profile;
+        $profile = EmployeeProfile::with('user')
+            ->where('nik', $nik)
+            ->first();
 
         if (!$profile) {
             return response()->json([
-                'message' => 'Profil karyawan belum tersedia.',
+                'message' => 'Profil karyawan tidak ditemukan.',
             ], 404);
         }
 
         return response()->json([
             'data' => [
-                'user'    => $this->transformUser($user),
+                'user'    => $profile->user
+                    ? $this->transformUser($profile->user)
+                    : null,
                 'profile' => $this->transformProfile($profile),
             ],
         ]);
@@ -173,7 +175,6 @@ class EmployeeProfileController extends Controller
             'pendidikan'        => $profile->pendidikan,
             'no_ktp'            => $profile->no_ktp,
             'tempat_lahir'      => $profile->tempat_lahir,
-            // di model: protected $casts = ['tanggal_lahir' => 'date'];
             'tanggal_lahir'     => $profile->tanggal_lahir?->toDateString(),
             'jenis_kelamin'     => $profile->jenis_kelamin,
             'agama'             => $profile->agama,
