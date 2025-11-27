@@ -12,7 +12,7 @@ class SoftCompetencyController extends Controller
     /**
      * (KARYAWAN ONLY)
      *
-     * GET /api/karyawan/soft-competencies?tahun=2025
+     * GET /api/karyawan/soft-competencies?tahun=2025&per_page=10&page=1
      */
     public function indexSelf(Request $request)
     {
@@ -24,14 +24,18 @@ class SoftCompetencyController extends Controller
             ], 422);
         }
 
-        $tahun = $request->integer('tahun'); // bisa null
+        $tahun   = $request->integer('tahun'); // bisa null
+        $perPage = (int) $request->get('per_page', 10);
 
-        $userRows = SoftCompetency::forNik($user->nik)
+        // =========================
+        // 1) AMBIL SEMUA ROW (UNTUK CHART)
+        // =========================
+        $allRows = SoftCompetency::forNik($user->nik)
             ->forYear($tahun)
             ->orderBy('kode')
             ->get();
 
-        if ($userRows->isEmpty()) {
+        if ($allRows->isEmpty()) {
             return response()->json([
                 'data' => [
                     'nik'   => $user->nik,
@@ -39,16 +43,32 @@ class SoftCompetencyController extends Controller
                     'chart' => [],
                     'items' => [],
                 ],
+                'meta' => [
+                    'current_page' => 1,
+                    'per_page'     => $perPage,
+                    'total'        => 0,
+                    'last_page'    => 1,
+                ],
+                'links' => [
+                    'first' => null,
+                    'prev'  => null,
+                    'next'  => null,
+                    'last'  => null,
+                ],
             ]);
         }
 
+        // Hitung rata-rata per id_kompetensi (semua karyawan)
         $avgByKom = SoftCompetency::forYear($tahun)
-            ->whereIn('id_kompetensi', $userRows->pluck('id_kompetensi'))
+            ->whereIn('id_kompetensi', $allRows->pluck('id_kompetensi'))
             ->selectRaw('id_kompetensi, AVG(nilai) as avg_nilai')
             ->groupBy('id_kompetensi')
             ->pluck('avg_nilai', 'id_kompetensi');
 
-        $chart = $userRows->map(function ($row) use ($avgByKom) {
+        // =========================
+        // 2) BUILD DATA CHART (TANPA PAGINATION)
+        // =========================
+        $chart = $allRows->map(function ($row) use ($avgByKom) {
             $avg = $avgByKom[$row->id_kompetensi] ?? null;
 
             if ($avg !== null) {
@@ -70,7 +90,16 @@ class SoftCompetencyController extends Controller
             ];
         })->values();
 
-        $items = $userRows->map(function ($row) {
+        // =========================
+        // 3) QUERY PAGINATED ITEMS
+        // =========================
+        $itemsQuery = SoftCompetency::forNik($user->nik)
+            ->forYear($tahun)
+            ->orderBy('kode');
+
+        $paginator = $itemsQuery->paginate($perPage);
+
+        $items = collect($paginator->items())->map(function ($row) {
             return [
                 'id_kompetensi'   => $row->id_kompetensi,
                 'kode'            => $row->kode,
@@ -88,6 +117,18 @@ class SoftCompetencyController extends Controller
                 'tahun' => $tahun,
                 'chart' => $chart,
                 'items' => $items,
+            ],
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
+                'last_page'    => $paginator->lastPage(),
+            ],
+            'links' => [
+                'first' => $paginator->url(1),
+                'prev'  => $paginator->previousPageUrl(),
+                'next'  => $paginator->nextPageUrl(),
+                'last'  => $paginator->url($paginator->lastPage()),
             ],
         ]);
     }

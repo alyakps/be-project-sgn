@@ -18,33 +18,43 @@ class AdminController extends Controller
      * Body: multipart/form-data, field: file (.xlsx/.xls/.csv)
      */
     public function importKaryawan(Request $request)
-    {
-        $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx,xls,csv']
-        ]);
+{
+    $request->validate([
+        'file' => ['required', 'file', 'mimes:xlsx,xls,csv']
+    ]);
 
-        if (!$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+    if (!$request->user()->isAdmin()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
 
+    try {
         $import = new KaryawanImport();
         Excel::import($import, $request->file('file'));
-
-        $failures = collect($import->failures())->map(function ($f) {
-            return [
-                'row'    => $f->row(),
-                'errors' => $f->errors(),
-                'values' => $f->values(),
-            ];
-        })->values();
-
+    } catch (\Throwable $e) {
+        // 🟥 DI SINI kalau ada bug di KaryawanImport / DB, ketahuan
         return response()->json([
-            'message' => 'Proses import selesai.',
-            'sukses'  => $import->getImportedCount(),
-            'gagal'   => $failures,
-            'catatan' => 'Header yang diterima: nama/name, email, password. Case-insensitive & auto-trim.',
-        ]);
+            'message' => 'Terjadi error saat import karyawan.',
+            'error'   => $e->getMessage(),
+            'trace'   => config('app.debug') ? $e->getTraceAsString() : null,
+        ], 500);
     }
+
+    $failures = collect($import->failures())->map(function ($f) {
+        return [
+            'row'    => $f->row(),
+            'errors' => $f->errors(),
+            'values' => $f->values(),
+        ];
+    })->values();
+
+    return response()->json([
+        'message' => 'Proses import selesai.',
+        'sukses'  => $import->getImportedCount(),
+        'gagal'   => $failures,
+        'catatan' => 'Header yang diterima: nik, nama/name, email, password.',
+    ]);
+}
+
 
     /**
      * Import hard competency dari Excel/CSV (hanya admin).

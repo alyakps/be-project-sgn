@@ -37,17 +37,42 @@ class AuthController extends Controller
     }
 
     public function me(Request $request)
-    {
-        $u = $request->user(); // user dari token Sanctum
-        return response()->json([
-            'id'         => $u->id,
-            'nik'        => $u->nik ?? null,
-            'name'       => $u->name,
-            'email'      => $u->email,
-            'role'       => $u->role ?? null,
-            'created_at' => $u->created_at,
-        ]);
-    }
+{
+    $u = $request->user()->load('profile');
+    $p = $u->profile;
+
+    return response()->json([
+        'id'    => $u->id,
+        'nik'   => $u->nik,
+        'name'  => $u->name,
+        'email' => $u->email,
+        'role'  => $u->role,
+
+        'profile' => [
+            'nama_lengkap'     => $p->nama_lengkap ?? null,
+            'gelar_akademik'   => $p->gelar_akademik ?? null,
+            'nik'              => $p->nik ?? null,
+            'pendidikan'       => $p->pendidikan ?? null,
+            'no_ktp'           => $p->no_ktp ?? null,
+            'tempat_lahir'     => $p->tempat_lahir ?? null,
+            'tanggal_lahir'    => $p?->tanggal_lahir?->toDateString(),
+            'tanggal_lahir_ddmmyy' => $p?->tanggal_lahir?->format('d/m/Y'),
+            'jenis_kelamin'    => $p->jenis_kelamin ?? null,
+            'agama'            => $p->agama ?? null,
+            'jabatan_terakhir' => $p->jabatan_terakhir ?? null,
+            'alamat_rumah'     => $p->alamat_rumah ?? null,
+            'handphone'        => $p->handphone ?? null,
+            'email_pribadi'    => $p->email_pribadi ?? null,
+            'npwp'             => $p->npwp ?? null,
+            'suku'             => $p->suku ?? null,
+            'golongan_darah'   => $p->golongan_darah ?? null,
+            'status_perkawinan'=> $p->status_perkawinan ?? null,
+            'penilaian_kerja'  => $p->penilaian_kerja ?? null,
+            'pencapaian'       => $p->pencapaian ?? null,
+        ]
+    ]);
+}
+
 
     public function logout(Request $request)
     {

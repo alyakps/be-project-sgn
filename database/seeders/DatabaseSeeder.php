@@ -12,6 +12,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             HardCompetencySeeder::class,
             SoftCompetencySeeder::class,
+            EmployeeProfileSeeder::class,
         ]);
     }
 }

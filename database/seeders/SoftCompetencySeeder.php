@@ -11,7 +11,7 @@ class SoftCompetencySeeder extends Seeder
     {
         $rows = [
             [
-                'nik' => '5025211174',
+                'nik' => '5025211176',
                 'tahun' => 2025,
                 'id_kompetensi' => '964',
                 'kode' => 'CIN',
@@ -21,7 +21,7 @@ class SoftCompetencySeeder extends Seeder
                 'deskripsi' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
             ],
             [
-                'nik' => '5025211175',
+                'nik' => '5025211176',
                 'tahun' => 2025,
                 'id_kompetensi' => '965',
                 'kode' => 'TRL',

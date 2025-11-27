@@ -3,6 +3,7 @@
 namespace App\Imports;
 
 use App\Models\User;
+use App\Models\EmployeeProfile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Concerns\ToModel;
@@ -27,17 +28,29 @@ class KaryawanImport implements
 
     protected int $imported = 0;
 
-    /** Temukan key asli di $row dari daftar alias (case-insensitive, trim) */
+    /**
+     * Temukan key asli di $row dari daftar alias (case-insensitive, trim)
+     * Contoh:
+     *  - " NIK "     -> " NIK "
+     *  - "Nama"      -> "Nama"
+     *  - "e-mail"    -> "e-mail"
+     */
     private function resolveKey(array $row, array $aliases): ?string
     {
         $normalized = [];
+
         foreach ($row as $k => $_) {
+            // contoh: " NIK " -> "nik"
             $normalized[trim(mb_strtolower($k))] = $k; // lower -> original
         }
+
         foreach ($aliases as $alias) {
             $key = trim(mb_strtolower($alias));
-            if (isset($normalized[$key])) return $normalized[$key];
+            if (isset($normalized[$key])) {
+                return $normalized[$key];
+            }
         }
+
         return null;
     }
 
@@ -62,7 +75,7 @@ class KaryawanImport implements
 
         // Normalisasi NIK agar tidak jadi 123.0 dan tetap berupa string
         if ($nik !== '' && is_numeric($nik)) {
-            $nik = rtrim(rtrim((string)$nik, '0'), '.');
+            $nik = rtrim(rtrim((string) $nik, '0'), '.');
         }
 
         // Default password jika kosong (opsional)
@@ -70,31 +83,55 @@ class KaryawanImport implements
             $pass = 'password123';
         }
 
+        // ============================
+        // SIMPAN / UPDATE USER
+        // ============================
+        // Kalau mau selalu buat baru dan fail kalau duplikat email/nik,
+        // bisa pakai create() saja. Di sini pakai updateOrCreate supaya
+        // kalau re-import NIK yang sama, datanya di-update.
+        $user = User::updateOrCreate(
+            ['nik' => $nik],
+            [
+                'name'     => $name,
+                'email'    => $email,
+                'password' => Hash::make($pass),
+                'role'     => 'karyawan',
+            ]
+        );
+
+        // ============================
+        // AUTO-BUAT EMPLOYEE PROFILE
+        // ============================
+        EmployeeProfile::firstOrCreate(
+            ['user_id' => $user->id],
+            [
+                'nama_lengkap'  => $user->name,
+                'nik'           => $user->nik,
+                'email_pribadi' => $user->email,
+                // field lain boleh dibiarkan null / default
+            ]
+        );
+
         $this->imported++;
 
-        return new User([
-            'nik'      => $nik,
-            'name'     => $name,
-            'email'    => $email,
-            'password' => Hash::make($pass),
-            'role'     => 'karyawan',
-        ]);
+        // PENTING:
+        // Karena kita sudah manual insert/update di atas,
+        // JANGAN kembalikan model ke Excel.
+        // Kalau return $user -> Excel akan mass-insert lagi dan ID bentrok.
+        return null;
     }
 
     /** Validasi per baris */
     public function rules(): array
     {
         return [
-            // NIK wajib, hanya digit, unik
-            '*.nik'      => ['required', 'regex:/^\d+$/', Rule::unique('users','nik')],
-
+            // NIK wajib, hanya digit
+            '*.nik'      => ['required', 'regex:/^\d+$/'],
             // Salah satu wajib: nama atau name
             '*.nama'     => ['required_without:*.name'],
             '*.name'     => ['required_without:*.nama'],
-
-            // Email wajib & unik
-            '*.email'    => ['required', 'email', Rule::unique('users','email')],
-
+            // Email wajib & format benar
+            '*.email'    => ['required', 'email'],
             // Password boleh kosong (akan diisi default). Ubah ke 'required' jika wajib.
             '*.password' => ['nullable', 'string', 'min:6'],
         ];
@@ -105,20 +142,29 @@ class KaryawanImport implements
         return [
             '*.nik.required' => 'Kolom NIK wajib diisi.',
             '*.nik.regex'    => 'NIK hanya boleh berisi angka.',
-            '*.nik.unique'   => 'NIK sudah terdaftar.',
 
             '*.nama.required_without' => 'Kolom nama atau name wajib diisi.',
             '*.name.required_without' => 'Kolom name atau nama wajib diisi.',
 
             '*.email.required' => 'Kolom email wajib diisi.',
             '*.email.email'    => 'Format email tidak valid.',
-            '*.email.unique'   => 'Email sudah terdaftar.',
 
             '*.password.min'   => 'Password minimal 6 karakter.',
         ];
     }
 
-    public function getImportedCount(): int { return $this->imported; }
-    public function batchSize(): int { return 500; }
-    public function chunkSize(): int { return 500; }
+    public function getImportedCount(): int
+    {
+        return $this->imported;
+    }
+
+    public function batchSize(): int
+    {
+        return 500;
+    }
+
+    public function chunkSize(): int
+    {
+        return 500;
+    }
 }
