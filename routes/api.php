@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\HardCompetencyController;
 use App\Http\Controllers\Api\DashboardKaryawanController;
 use App\Http\Controllers\Api\SoftCompetencyController;
+use App\Http\Controllers\Api\EmployeeProfileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -37,6 +38,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/soft-competencies', [SoftCompetencyController::class, 'adminIndex']);
     Route::get('/karyawan/{nik}/soft-competencies', [SoftCompetencyController::class, 'adminByNik']);
     Route::post('/import-soft-competencies', [AdminController::class, 'importSoftCompetencies']);
+    Route::get('/employee-profiles', [EmployeeProfileController::class, 'adminIndex']);
+    Route::get('/karyawan/{user}/profile', [EmployeeProfileController::class, 'adminShowByUser']);
 });
 
 /*
@@ -49,4 +52,6 @@ Route::middleware(['auth:sanctum', 'role:karyawan'])->group(function () {
     Route::get('/karyawan/hard-competencies', [HardCompetencyController::class, 'indexSelf']);
     Route::get('/dashboard/karyawan/summary', [DashboardKaryawanController::class, 'summary']);
     Route::get('/karyawan/soft-competencies', [SoftCompetencyController::class, 'indexSelf']);
+    Route::get('/karyawan/profile', [EmployeeProfileController::class, 'showSelf']);
+    Route::put('/karyawan/profile', [EmployeeProfileController::class, 'updateSelf']);
 });
