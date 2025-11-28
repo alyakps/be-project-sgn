@@ -37,6 +37,7 @@ class UpdateEmployeeProfileRequest extends FormRequest
             'status_perkawinan' => ['nullable', 'string', 'max:50'],
             'penilaian_kerja'   => ['nullable', 'string'],
             'pencapaian'        => ['nullable', 'string'],
+            'photo'             => ['nullable', 'image', 'max:2048'],
         ];
     }
 }

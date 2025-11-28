@@ -53,5 +53,5 @@ Route::middleware(['auth:sanctum', 'role:karyawan'])->group(function () {
     Route::get('/dashboard/karyawan/summary', [DashboardKaryawanController::class, 'summary']);
     Route::get('/karyawan/soft-competencies', [SoftCompetencyController::class, 'indexSelf']);
     Route::get('/karyawan/profile', [EmployeeProfileController::class, 'showSelf']);
-    Route::put('/karyawan/profile', [EmployeeProfileController::class, 'updateSelf']);
+    Route::match(['put', 'post'], '/karyawan/profile', [EmployeeProfileController::class, 'updateSelf']);
 });

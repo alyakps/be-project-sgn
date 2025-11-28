@@ -14,6 +14,9 @@ return new class extends Migration
             // Relasi ke tabel users (wajib 1:1)
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade')->unique();
 
+            // Tambahan: photo_path
+            $table->string('photo_path', 255)->nullable();
+
             // 1. Nama Lengkap
             $table->string('nama_lengkap', 150)->nullable();
 

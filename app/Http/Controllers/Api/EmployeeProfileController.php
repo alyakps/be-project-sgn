@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateEmployeeProfileRequest;
 use App\Models\EmployeeProfile;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class EmployeeProfileController extends Controller
 {
@@ -18,7 +19,7 @@ class EmployeeProfileController extends Controller
     {
         $user = $request->user()->load('profile');
 
-        // kalau belum punya profile → buat empty
+        // kalau belum punya profile → buat default
         $profile = $user->profile ?? EmployeeProfile::firstOrCreate(
             ['user_id' => $user->id],
             [
@@ -43,8 +44,8 @@ class EmployeeProfileController extends Controller
     public function updateSelf(UpdateEmployeeProfileRequest $request)
     {
         $user = $request->user();
-        $data = $request->validated();
 
+        // pastikan profile ada dulu
         $profile = EmployeeProfile::firstOrCreate(
             ['user_id' => $user->id],
             [
@@ -53,6 +54,22 @@ class EmployeeProfileController extends Controller
                 'email_pribadi' => $user->email,
             ]
         );
+
+        // ==== HANDLE FOTO JIKA DIUPLOAD ====
+        if ($request->hasFile('photo')) {
+            // hapus foto lama kalau ada
+            if ($profile->photo_path) {
+                Storage::disk('public')->delete($profile->photo_path);
+            }
+
+            // simpan foto baru
+            $path = $request->file('photo')->store('employee_photos', 'public');
+            $profile->photo_path = $path;
+        }
+
+        // 🚩 ambil semua input kecuali file "photo"
+        // (FormRequest tetap jalan untuk validasi)
+        $data = $request->except('photo');
 
         $profile->fill($data);
         $profile->save();
@@ -102,6 +119,9 @@ class EmployeeProfileController extends Controller
                 'pendidikan'       => $profile->pendidikan,
                 'handphone'        => $profile->handphone,
                 'email_pribadi'    => $profile->email_pribadi,
+                'photo_url'        => $profile->photo_path
+                    ? Storage::disk('public')->url($profile->photo_path)
+                    : null,
                 'user'             => $profile->user
                     ? $this->transformUser($profile->user)
                     : null,
@@ -169,6 +189,9 @@ class EmployeeProfileController extends Controller
     {
         return [
             'id'                => $profile->id,
+            'photo_url'         => $profile->photo_path
+                ? Storage::disk('public')->url($profile->photo_path)
+                : null,
             'nama_lengkap'      => $profile->nama_lengkap,
             'gelar_akademik'    => $profile->gelar_akademik,
             'nik'               => $profile->nik,
