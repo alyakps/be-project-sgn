@@ -25,6 +25,7 @@ class DashboardKaryawanController extends Controller
      *   "data": {
      *     "nik": "5025211174",
      *     "tahun": 2025,
+     *     "available_years": [2023, 2024, 2025],
      *     "profile": {
      *       "name": "Budi Santoso",
      *       "nik": "5025211174",
@@ -44,7 +45,7 @@ class DashboardKaryawanController extends Controller
 
         if (!$user || !$user->nik) {
             return response()->json([
-                'message' => 'User tidak memiliki NIK, tidak bisa mengambil summary.'
+                'message' => 'User tidak memiliki NIK, tidak bisa mengambil summary.',
             ], 422);
         }
 
@@ -58,19 +59,58 @@ class DashboardKaryawanController extends Controller
             ]
         );
 
-        // tahun opsional, kalau null → semua tahun
-        $tahun = $request->integer('tahun');
+        /**
+         * TAHUN OPSIONAL
+         * - kalau ?tahun=2025 → $tahun = 2025 (int)
+         * - kalau tidak dikirim / ?tahun= / ?tahun=all → $tahun = null
+         */
+        $tahunParam = $request->query('tahun'); // string|null, contoh: "2025"
+        $tahun = $tahunParam !== null && $tahunParam !== '' && $tahunParam !== 'all'
+            ? (int) $tahunParam
+            : null;
+
+        /**
+         * ========================
+         * AVAILABLE YEARS (DINAMIS)
+         * ========================
+         * Ambil daftar tahun yang benar-benar ada datanya
+         * dari tabel HardCompetency dan SoftCompetency untuk NIK ini.
+         */
+        $hardYears = HardCompetency::forNik($user->nik)
+            ->whereNotNull('tahun')       // sesuaikan kalau nama kolom beda
+            ->distinct()
+            ->pluck('tahun')              // sesuaikan kalau nama kolom beda
+            ->toArray();
+
+        $softYears = SoftCompetency::forNik($user->nik)
+            ->whereNotNull('tahun')       // sesuaikan kalau nama kolom beda
+            ->distinct()
+            ->pluck('tahun')              // sesuaikan kalau nama kolom beda
+            ->toArray();
+
+        $availableYears = collect($hardYears)
+            ->merge($softYears)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all(); // contoh: [2023, 2024, 2025]
 
         // =========================
         // HARD COMPETENCY SUMMARY
         // =========================
-        $hardQuery   = HardCompetency::forNik($user->nik)->forYear($tahun);
+        $hardQuery = HardCompetency::forNik($user->nik);
+        if ($tahun !== null) {
+            $hardQuery->forYear($tahun); // scope forYear($tahun) milikmu
+        }
         $hardSummary = $this->buildSummary($hardQuery);
 
         // =========================
         // SOFT COMPETENCY SUMMARY
         // =========================
-        $softQuery   = SoftCompetency::forNik($user->nik)->forYear($tahun);
+        $softQuery = SoftCompetency::forNik($user->nik);
+        if ($tahun !== null) {
+            $softQuery->forYear($tahun);
+        }
         $softSummary = $this->buildSummary($softQuery);
 
         // =========================
@@ -89,7 +129,8 @@ class DashboardKaryawanController extends Controller
         return response()->json([
             'data' => [
                 'nik'             => $user->nik,
-                'tahun'           => $tahun, // bisa null kalau tidak difilter
+                'tahun'           => $tahun,          // bisa null kalau tidak difilter
+                'available_years' => $availableYears, // <=== dipakai FE untuk dropdown tahun
                 'profile'         => $profileSummary,
                 'hard_competency' => $hardSummary,
                 'soft_competency' => $softSummary,
@@ -127,7 +168,7 @@ class DashboardKaryawanController extends Controller
             ->pluck('total', 'status')
             ->toArray();
 
-        $avg = (clone $baseQuery)->avg('nilai');
+        $avg = (clone $baseQuery)->avg('nilai'); // kolom "nilai" di tabel
 
         return [
             'total' => $total,

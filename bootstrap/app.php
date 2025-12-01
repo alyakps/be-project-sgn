@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // 🌐 GLOBAL MIDDLEWARE (jalan di semua request, termasuk API)
+        $middleware->append(\App\Http\Middleware\Cors::class);
+
+        // 🔐 ROUTE MIDDLEWARE ALIAS
         $middleware->alias([
             'role' => \App\Http\Middleware\RoleMiddleware::class,
         ]);

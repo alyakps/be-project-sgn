@@ -112,7 +112,7 @@ class AuthController extends Controller
         }
 
         // Update password (Laravel auto-hash)
-        $user->password = $data['new_password'];
+        $user->password = Hash::make($data['new_password']);
         $user->save();
 
         return response()->json([

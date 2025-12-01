@@ -28,6 +28,16 @@ class SoftCompetencyController extends Controller
         $perPage = (int) $request->get('per_page', 10);
 
         // =========================
+        // 0) AMBIL DAFTAR TAHUN YANG ADA UNTUK USER INI
+        // =========================
+        $availableYears = SoftCompetency::forNik($user->nik)
+            ->selectRaw('DISTINCT tahun')
+            ->orderByDesc('tahun')
+            ->pluck('tahun')
+            ->map(fn ($t) => (int) $t)
+            ->values();
+
+        // =========================
         // 1) AMBIL SEMUA ROW (UNTUK CHART)
         // =========================
         $allRows = SoftCompetency::forNik($user->nik)
@@ -38,10 +48,11 @@ class SoftCompetencyController extends Controller
         if ($allRows->isEmpty()) {
             return response()->json([
                 'data' => [
-                    'nik'   => $user->nik,
-                    'tahun' => $tahun,
-                    'chart' => [],
-                    'items' => [],
+                    'nik'             => $user->nik,
+                    'tahun'           => $tahun,
+                    'available_years' => $availableYears, // ⬅️ KIRIM JUGA LIST TAHUN
+                    'chart'           => [],
+                    'items'           => [],
                 ],
                 'meta' => [
                     'current_page' => 1,
@@ -80,13 +91,13 @@ class SoftCompetencyController extends Controller
             }
 
             return [
-                'id_kompetensi'        => $row->id_kompetensi,
-                'kode'                 => $row->kode,
-                'nama_kompetensi'      => $row->nama_kompetensi,
-                'your_score'           => (int) $row->nilai,
-                'your_level'           => $this->scoreLevel($row->nilai),
-                'avg_employee_score'   => $avgRounded,
-                'avg_level'            => $avgLevel,
+                'id_kompetensi'      => $row->id_kompetensi,
+                'kode'               => $row->kode,
+                'nama_kompetensi'    => $row->nama_kompetensi,
+                'your_score'         => (int) $row->nilai,
+                'your_level'         => $this->scoreLevel($row->nilai),
+                'avg_employee_score' => $avgRounded,
+                'avg_level'          => $avgLevel,
             ];
         })->values();
 
@@ -113,10 +124,11 @@ class SoftCompetencyController extends Controller
 
         return response()->json([
             'data' => [
-                'nik'   => $user->nik,
-                'tahun' => $tahun,
-                'chart' => $chart,
-                'items' => $items,
+                'nik'             => $user->nik,
+                'tahun'           => $tahun,
+                'available_years' => $availableYears, // ⬅️ DIKIRIM KE FRONTEND
+                'chart'           => $chart,
+                'items'           => $items,
             ],
             'meta' => [
                 'current_page' => $paginator->currentPage(),
