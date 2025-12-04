@@ -26,13 +26,9 @@ class DashboardKaryawanController extends Controller
      *     "nik": "5025211174",
      *     "tahun": 2025,
      *     "available_years": [2023, 2024, 2025],
-     *     "profile": {
-     *       "name": "Budi Santoso",
-     *       "nik": "5025211174",
-     *       "jabatan": "Staff IT",
-     *       "unit_kerja": "IT Department",
-     *       "photo_url": "http://localhost:8000/storage/employee_photos/xxx.jpg"
-     *     },
+     *     "available_years_hard": [2023, 2024],
+     *     "available_years_soft": [2024, 2025],
+     *     "profile": { ... },
      *     "hard_competency": { ... },
      *     "soft_competency": { ... }
      *   }
@@ -77,17 +73,26 @@ class DashboardKaryawanController extends Controller
          * dari tabel HardCompetency dan SoftCompetency untuk NIK ini.
          */
         $hardYears = HardCompetency::forNik($user->nik)
-            ->whereNotNull('tahun')       // sesuaikan kalau nama kolom beda
+            ->whereNotNull('tahun')
             ->distinct()
-            ->pluck('tahun')              // sesuaikan kalau nama kolom beda
-            ->toArray();
+            ->pluck('tahun')
+            ->map(fn ($y) => (int) $y)
+            ->unique()
+            ->sort()      // kalau mau terbaru di atas ganti ->sortDesc()
+            ->values()
+            ->all();
 
         $softYears = SoftCompetency::forNik($user->nik)
-            ->whereNotNull('tahun')       // sesuaikan kalau nama kolom beda
+            ->whereNotNull('tahun')
             ->distinct()
-            ->pluck('tahun')              // sesuaikan kalau nama kolom beda
-            ->toArray();
+            ->pluck('tahun')
+            ->map(fn ($y) => (int) $y)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
 
+        // union semua tahun (dipakai kalau FE butuh gabungan)
         $availableYears = collect($hardYears)
             ->merge($softYears)
             ->unique()
@@ -128,9 +133,13 @@ class DashboardKaryawanController extends Controller
 
         return response()->json([
             'data' => [
-                'nik'             => $user->nik,
-                'tahun'           => $tahun,          // bisa null kalau tidak difilter
-                'available_years' => $availableYears, // <=== dipakai FE untuk dropdown tahun
+                'nik'                  => $user->nik,
+                'tahun'                => $tahun,          // bisa null kalau tidak difilter
+                'available_years'      => $availableYears, // gabungan hard+soft (kalau masih dipakai)
+                // 🔥 baru: dipakai FE untuk dropdown per-card
+                'available_years_hard' => $hardYears,
+                'available_years_soft' => $softYears,
+
                 'profile'         => $profileSummary,
                 'hard_competency' => $hardSummary,
                 'soft_competency' => $softSummary,

@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
-// ⬇️ tambahkan ini
 use App\Models\EmployeeProfile;
 
 class User extends Authenticatable
@@ -21,7 +20,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed', // string -> otomatis di-hash
+            'password' => 'hashed', // ⬅️ string akan otomatis di-hash oleh Laravel
         ];
     }
 
@@ -30,7 +29,7 @@ class User extends Authenticatable
         return $this->role === 'admin';
     }
 
-    // ⬇️ RELASI BARU: 1 user punya 1 profile
+    // 1 user punya 1 profile
     public function profile()
     {
         return $this->hasOne(EmployeeProfile::class);

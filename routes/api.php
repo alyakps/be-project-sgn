@@ -25,6 +25,15 @@ Route::prefix('auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| MASTER DATA (Butuh Login)
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/master/cities', [\App\Http\Controllers\Api\CityController::class, 'index']);
+});
+
+/*
+|--------------------------------------------------------------------------
 | ADMIN (role:admin)
 |--------------------------------------------------------------------------
 */
@@ -41,6 +50,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::post('/import-soft-competencies', [AdminController::class, 'importSoftCompetencies']);
     Route::get('/employee-profiles', [EmployeeProfileController::class, 'adminIndex']);
     Route::get('/karyawan/{nik}/profile', [EmployeeProfileController::class, 'adminShowByNik']);
+    Route::get('/import-logs', [AdminController::class, 'importLogs']);
+    Route::post('/karyawan/{user}/reset-password', [AdminController::class, 'resetKaryawanPassword']);
 });
 
 /*
@@ -48,7 +59,6 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
 | KARYAWAN (role:karyawan)
 |--------------------------------------------------------------------------
 */
-// 🟢 Karyawan cuma bisa lihat data miliknya sendiri (pakai NIK dari token)
 Route::middleware(['auth:sanctum', 'role:karyawan'])->group(function () {
     Route::get('/karyawan/hard-competencies', [HardCompetencyController::class, 'indexSelf']);
     Route::get('/dashboard/karyawan/summary', [DashboardKaryawanController::class, 'summary']);
