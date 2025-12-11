@@ -29,6 +29,10 @@ class EmployeeProfileController extends Controller
             ]
         );
 
+        // 🔹 Sumber resmi unit_kerja: dari tabel users
+        //    (admin assign di import karyawan / halaman admin)
+        $profile->unit_kerja = $user->unit_kerja;
+
         return response()->json([
             'data' => [
                 'user'    => $this->transformUser($user),
@@ -38,7 +42,7 @@ class EmployeeProfileController extends Controller
     }
 
     /**
-     * (KARYAWAN) PUT /api/karyawan/profile
+     * (KARYAWAN) POST /api/karyawan/profile
      * Karyawan update profil dirinya sendiri.
      */
     public function updateSelf(UpdateEmployeeProfileRequest $request)
@@ -67,16 +71,21 @@ class EmployeeProfileController extends Controller
             $profile->photo_path = $path;
         }
 
-        // 🚩 ambil semua input kecuali file "photo"
-        // (FormRequest tetap jalan untuk validasi)
+        // 🚫 Penting:
+        //    - Abaikan "unit_kerja" dari input user (hanya admin yang boleh ubah di tabel users)
+        //    - Abaikan file "photo" juga dari mass assignment
         $data = $request->except('photo');
+        unset($data['unit_kerja']);
 
         $profile->fill($data);
         $profile->save();
 
+        // sinkron lagi unit_kerja untuk response (selalu dari users)
+        $profile->unit_kerja = $user->unit_kerja;
+
         return response()->json([
             'message' => 'Profil berhasil diperbarui.',
-            'data'    => $this->transformProfile($profile->fresh()),
+            'data'    => $this->transformProfile($profile),
         ]);
     }
 
@@ -110,6 +119,9 @@ class EmployeeProfileController extends Controller
         $paginator = $query->paginate($perPage);
 
         $items = $paginator->getCollection()->map(function (EmployeeProfile $profile) {
+            // 🔹 Tarik unit_kerja dari user juga (kalau ada)
+            $user = $profile->user;
+
             return [
                 'id'               => $profile->id,
                 'user_id'          => $profile->user_id,
@@ -119,11 +131,12 @@ class EmployeeProfileController extends Controller
                 'pendidikan'       => $profile->pendidikan,
                 'handphone'        => $profile->handphone,
                 'email_pribadi'    => $profile->email_pribadi,
+                'unit_kerja'       => $user?->unit_kerja, // <-- dari users
                 'photo_url'        => $profile->photo_path
                     ? Storage::disk('public')->url($profile->photo_path)
                     : null,
-                'user'             => $profile->user
-                    ? $this->transformUser($profile->user)
+                'user'             => $user
+                    ? $this->transformUser($user)
                     : null,
             ];
         })->values();
@@ -161,6 +174,11 @@ class EmployeeProfileController extends Controller
             ], 404);
         }
 
+        // 🔹 Pastikan unit_kerja diambil dari user
+        if ($profile->user) {
+            $profile->unit_kerja = $profile->user->unit_kerja;
+        }
+
         return response()->json([
             'data' => [
                 'user'    => $profile->user
@@ -177,11 +195,12 @@ class EmployeeProfileController extends Controller
     private function transformUser(User $user): array
     {
         return [
-            'id'    => $user->id,
-            'nik'   => $user->nik,
-            'name'  => $user->name,
-            'email' => $user->email,
-            'role'  => $user->role,
+            'id'         => $user->id,
+            'nik'        => $user->nik,
+            'name'       => $user->name,
+            'email'      => $user->email,
+            'role'       => $user->role,
+            'unit_kerja' => $user->unit_kerja, // 🔹 bisa dipakai di tempat lain
         ];
     }
 
@@ -202,7 +221,7 @@ class EmployeeProfileController extends Controller
             'jenis_kelamin'     => $profile->jenis_kelamin,
             'agama'             => $profile->agama,
             'jabatan_terakhir'  => $profile->jabatan_terakhir,
-            'unit_kerja'        => $profile->unit_kerja,
+            'unit_kerja'        => $profile->unit_kerja, // 🔹 sekarang sudah diset dari users di caller
             'alamat_rumah'      => $profile->alamat_rumah,
             'handphone'         => $profile->handphone,
             'email_pribadi'     => $profile->email_pribadi,

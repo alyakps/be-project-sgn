@@ -32,10 +32,19 @@ class AuthController extends Controller
         $token = $user->createToken('api-token')->plainTextToken;
 
         return response()->json([
-            'message'     => 'Logged in successfully.',
-            'email'       => $user->email,
-            'token'       => $token,
-            'token_type'  => 'Bearer',
+            'message'    => 'Logged in successfully.',
+            'email'      => $user->email,
+            'token'      => $token,
+            'token_type' => 'Bearer',
+
+            // 🔹 Tambahan: kirim user agar FE bisa simpan role, nik, dll
+            'user'       => [
+                'id'    => $user->id,
+                'nik'   => $user->nik,
+                'name'  => $user->name,
+                'email' => $user->email,
+                'role'  => $user->role,
+            ],
         ]);
     }
 

@@ -148,17 +148,134 @@ class SoftCompetencyController extends Controller
     /**
      * (ADMIN ONLY)
      *
-     * GET /api/admin/karyawan/{nik}/soft-competencies
+     * GET /api/admin/karyawan/{nik}/soft-competencies?tahun=2025&per_page=10
      *
-     * Admin lihat soft competency 1 karyawan (by NIK) dengan pagination.
-     * Query:
-     *  - q        : keyword (kode/nama/status/deskripsi)
-     *  - tahun    : tahun penilaian
-     *  - per_page : default 10
+     * Admin lihat soft competency 1 karyawan (by NIK) dengan
+     * struktur mirip indexSelf: nik + tahun + available_years + chart + items.
      */
     public function adminByNik(Request $request, string $nik)
     {
-        return $this->buildListForNik($request, $nik);
+        $tahun   = $request->integer('tahun'); // bisa null
+        $perPage = (int) $request->get('per_page', 10);
+
+        // =========================
+        // 0) AMBIL DAFTAR TAHUN YANG ADA UNTUK NIK INI
+        // =========================
+        $availableYears = SoftCompetency::forNik($nik)
+            ->selectRaw('DISTINCT tahun')
+            ->orderByDesc('tahun')
+            ->pluck('tahun')
+            ->map(fn ($t) => (int) $t)
+            ->values();
+
+        // =========================
+        // 1) AMBIL SEMUA ROW (UNTUK CHART)
+        // =========================
+        $allRows = SoftCompetency::forNik($nik)
+            ->forYear($tahun)
+            ->orderBy('kode')
+            ->get();
+
+        if ($allRows->isEmpty()) {
+            return response()->json([
+                'data' => [
+                    'nik'             => $nik,
+                    'tahun'           => $tahun,
+                    'available_years' => $availableYears,
+                    'chart'           => [],
+                    'items'           => [],
+                ],
+                'meta' => [
+                    'current_page' => 1,
+                    'per_page'     => $perPage,
+                    'total'        => 0,
+                    'last_page'    => 1,
+                ],
+                'links' => [
+                    'first' => null,
+                    'prev'  => null,
+                    'next'  => null,
+                    'last'  => null,
+                ],
+            ]);
+        }
+
+        // =========================
+        // 2) Hitung rata-rata per id_kompetensi (semua karyawan di tahun tsb)
+        // =========================
+        $avgByKom = SoftCompetency::forYear($tahun)
+            ->whereIn('id_kompetensi', $allRows->pluck('id_kompetensi'))
+            ->selectRaw('id_kompetensi, AVG(nilai) as avg_nilai')
+            ->groupBy('id_kompetensi')
+            ->pluck('avg_nilai', 'id_kompetensi');
+
+        // =========================
+        // 3) BUILD DATA CHART (TANPA PAGINATION)
+        // =========================
+        $chart = $allRows->map(function ($row) use ($avgByKom) {
+            $avg = $avgByKom[$row->id_kompetensi] ?? null;
+
+            if ($avg !== null) {
+                $avgRounded = round($avg, 1);
+                $avgLevel   = $this->scoreLevel((int) round($avgRounded));
+            } else {
+                $avgRounded = null;
+                $avgLevel   = null;
+            }
+
+            return [
+                'id_kompetensi'      => $row->id_kompetensi,
+                'kode'               => $row->kode,
+                'nama_kompetensi'    => $row->nama_kompetensi,
+                'your_score'         => (int) $row->nilai,
+                'your_level'         => $this->scoreLevel($row->nilai),
+                'avg_employee_score' => $avgRounded,
+                'avg_level'          => $avgLevel,
+            ];
+        })->values();
+
+        // =========================
+        // 4) QUERY PAGINATED ITEMS BUAT TABEL
+        // =========================
+        $itemsQuery = SoftCompetency::forNik($nik)
+            ->forYear($tahun)
+            ->orderBy('kode');
+
+        $paginator = $itemsQuery->paginate($perPage);
+
+        $items = collect($paginator->items())->map(function ($row) {
+            return [
+                'id_kompetensi'   => $row->id_kompetensi,
+                'kode'            => $row->kode,
+                'nama_kompetensi' => $row->nama_kompetensi,
+                'status'          => $row->status,
+                'nilai'           => $row->nilai,
+                'level'           => $this->scoreLevel($row->nilai),
+                'deskripsi'       => $row->deskripsi,
+            ];
+        })->values();
+
+        return response()->json([
+            'data' => [
+                'nik'             => $nik,
+                'tahun'           => $tahun,
+                'available_years' => $availableYears,
+                'chart'           => $chart,
+                'items'           => $items,
+            ],
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
+                'last_page'    => $paginator->lastPage(),
+            ],
+            'links' => [
+                'first' => $paginator->url(1),
+                'prev'  => $paginator->previousPageUrl(),
+                'next'  => $paginator->nextPageUrl(),
+                'last'  => $paginator->url($paginator->lastPage()),
+            ],
+        ]);
     }
 
     /**
@@ -210,6 +327,7 @@ class SoftCompetencyController extends Controller
 
     /**
      * Helper untuk build list soft competency berdasarkan NIK (admin / karyawan).
+     * (Sekarang tidak dipakai di adminByNik, tapi boleh disimpan kalau mau reuse untuk endpoint lain.)
      */
     protected function buildListForNik(Request $request, string $nik)
     {
@@ -260,4 +378,3 @@ class SoftCompetencyController extends Controller
         return 'High';
     }
 }
-cC:

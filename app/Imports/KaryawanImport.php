@@ -30,17 +30,12 @@ class KaryawanImport implements
 
     /**
      * Temukan key asli di $row dari daftar alias (case-insensitive, trim)
-     * Contoh:
-     *  - " NIK "     -> " NIK "
-     *  - "Nama"      -> "Nama"
-     *  - "e-mail"    -> "e-mail"
      */
     private function resolveKey(array $row, array $aliases): ?string
     {
         $normalized = [];
 
         foreach ($row as $k => $_) {
-            // contoh: " NIK " -> "nik"
             $normalized[trim(mb_strtolower($k))] = $k; // lower -> original
         }
 
@@ -57,83 +52,72 @@ class KaryawanImport implements
     public function model(array $row)
     {
         // --- dukung variasi header ---
-        $kNik   = $this->resolveKey($row, ['nik', 'NIK']);
-        $kNama  = $this->resolveKey($row, ['nama', 'name']);
-        $kEmail = $this->resolveKey($row, ['email', 'e-mail', 'e_mail']);
-        $kPass  = $this->resolveKey($row, ['password', 'kata sandi', 'sandi', 'pwd']);
+        $kNik       = $this->resolveKey($row, ['nik', 'NIK']);
+        $kNama      = $this->resolveKey($row, ['nama', 'name']);
+        $kEmail     = $this->resolveKey($row, ['email', 'e-mail', 'e_mail']);
+        $kPass      = $this->resolveKey($row, ['password', 'kata sandi', 'sandi', 'pwd']);
+        $kUnitKerja = $this->resolveKey($row, ['unit_kerja', 'unit kerja', 'unit']);
 
         // ambil nilai (string) + trim
-        $nik   = $kNik   ? (string)($row[$kNik]   ?? '') : '';
-        $name  = $kNama  ? (string)($row[$kNama]  ?? '') : '';
-        $email = $kEmail ? (string)($row[$kEmail] ?? '') : '';
-        $pass  = $kPass  ? (string)($row[$kPass]  ?? '') : '';
+        $nik       = $kNik       ? (string)($row[$kNik]       ?? '') : '';
+        $name      = $kNama      ? (string)($row[$kNama]      ?? '') : '';
+        $email     = $kEmail     ? (string)($row[$kEmail]     ?? '') : '';
+        $pass      = $kPass      ? (string)($row[$kPass]      ?? '') : '';
+        $unitKerja = $kUnitKerja ? (string)($row[$kUnitKerja] ?? '') : '';
 
-        $nik   = trim($nik);
-        $name  = trim($name);
-        $email = trim($email);
-        $pass  = trim($pass);
+        $nik       = trim($nik);
+        $name      = trim($name);
+        $email     = trim($email);
+        $pass      = trim($pass);
+        $unitKerja = trim($unitKerja);
 
-        // Normalisasi NIK agar tidak jadi 123.0 dan tetap berupa string
+        // Normalisasi NIK agar tidak jadi 123.0 dan tetap string
         if ($nik !== '' && is_numeric($nik)) {
             $nik = rtrim(rtrim((string) $nik, '0'), '.');
         }
 
-        // Default password jika kosong (opsional)
+        // Default password jika kosong
         if ($pass === '') {
             $pass = 'password123';
         }
 
-        // ============================
         // SIMPAN / UPDATE USER
-        // ============================
-        // Kalau mau selalu buat baru dan fail kalau duplikat email/nik,
-        // bisa pakai create() saja. Di sini pakai updateOrCreate supaya
-        // kalau re-import NIK yang sama, datanya di-update.
         $user = User::updateOrCreate(
             ['nik' => $nik],
             [
-                'name'     => $name,
-                'email'    => $email,
-                'password' => Hash::make($pass),
-                'role'     => 'karyawan',
+                'name'       => $name,
+                'email'      => $email,
+                'password'   => Hash::make($pass),
+                'role'       => 'karyawan',
+                'unit_kerja' => $unitKerja,
             ]
         );
 
-        // ============================
         // AUTO-BUAT EMPLOYEE PROFILE
-        // ============================
         EmployeeProfile::firstOrCreate(
             ['user_id' => $user->id],
             [
                 'nama_lengkap'  => $user->name,
                 'nik'           => $user->nik,
                 'email_pribadi' => $user->email,
-                // field lain boleh dibiarkan null / default
             ]
         );
 
         $this->imported++;
 
-        // PENTING:
-        // Karena kita sudah manual insert/update di atas,
-        // JANGAN kembalikan model ke Excel.
-        // Kalau return $user -> Excel akan mass-insert lagi dan ID bentrok.
-        return null;
+        return null; // jangan return model lagi
     }
 
     /** Validasi per baris */
     public function rules(): array
     {
         return [
-            // NIK wajib, hanya digit
-            '*.nik'      => ['required', 'regex:/^\d+$/'],
-            // Salah satu wajib: nama atau name
-            '*.nama'     => ['required_without:*.name'],
-            '*.name'     => ['required_without:*.nama'],
-            // Email wajib & format benar
-            '*.email'    => ['required', 'email'],
-            // Password boleh kosong (akan diisi default). Ubah ke 'required' jika wajib.
-            '*.password' => ['nullable', 'string', 'min:6'],
+            '*.nik'        => ['required', 'regex:/^\d+$/'],
+            '*.nama'       => ['required_without:*.name'],
+            '*.name'       => ['required_without:*.nama'],
+            '*.email'      => ['required', 'email'],
+            '*.password'   => ['nullable', 'string', 'min:6'],
+            '*.unit_kerja' => ['nullable', 'string', 'max:100'],
         ];
     }
 

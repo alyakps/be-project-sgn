@@ -12,7 +12,15 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
-    protected $fillable = ['nik','name','email','password','role'];
+    // 🔹 tambahkan unit_kerja di fillable
+    protected $fillable = [
+        'nik',
+        'name',
+        'email',
+        'password',
+        'role',
+        'unit_kerja',
+    ];
 
     protected $hidden = ['password','remember_token'];
 
@@ -20,7 +28,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed', // ⬅️ string akan otomatis di-hash oleh Laravel
+            'password' => 'hashed', // string otomatis di-hash
         ];
     }
 

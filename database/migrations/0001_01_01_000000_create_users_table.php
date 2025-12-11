@@ -10,7 +10,8 @@ return new class extends Migration {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('nik', 32)->unique(); // 🔹 NIK unik untuk tiap user
-            $table->string('name');                       // dipakai import Excel
+            $table->string('name');
+            $table->string('unit_kerja')->nullable();                       // dipakai import Excel
             $table->string('email')->unique();
             $table->string('password');
             $table->string('role')->default('karyawan');  // admin / karyawan

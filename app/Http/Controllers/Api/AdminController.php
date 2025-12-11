@@ -9,7 +9,12 @@ use App\Imports\HardCompetencyImport;
 use App\Imports\SoftCompetencyImport;
 use App\Models\ImportLog;
 use App\Models\User;
+use App\Models\EmployeeProfile;
+use App\Http\Requests\CreateEmployeeRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 
 class AdminController extends Controller
@@ -68,16 +73,13 @@ class AdminController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        // Tambahan untuk log
-        $file = $request->file('file');
+        $file         = $request->file('file');
         $originalName = $file->getClientOriginalName();
         $uploadedAt   = now();
 
-        // Proses import
         $import = new HardCompetencyImport($data['tahun']);
         Excel::import($import, $file);
 
-        // Kumpulkan failures dalam dua bentuk:
         $failuresCollection = collect($import->failures());
 
         $failures = $failuresCollection->map(function ($f) {
@@ -88,10 +90,9 @@ class AdminController extends Controller
             ];
         })->values();
 
-        $sukses = $import->getImportedCount();
-        $gagalCount = $failuresCollection->count();
+        $sukses      = $import->getImportedCount();
+        $gagalCount  = $failuresCollection->count();
 
-        // Simpan log ke DB
         ImportLog::create([
             'filename'    => $originalName,
             'type'        => 'hard',
@@ -105,7 +106,7 @@ class AdminController extends Controller
             'message'     => 'Proses import hard competency selesai.',
             'tahun'       => $data['tahun'],
             'sukses'      => $sukses,
-            'gagal'       => $failures, // tetap kirim detail ke FE
+            'gagal'       => $failures,
             'filename'    => $originalName,
             'uploaded_at' => $uploadedAt->format('Y-m-d H:i:s'),
         ]);
@@ -125,12 +126,10 @@ class AdminController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        // Tambahan untuk log
-        $file = $request->file('file');
+        $file         = $request->file('file');
         $originalName = $file->getClientOriginalName();
         $uploadedAt   = now();
 
-        // Proses import
         $import = new SoftCompetencyImport($data['tahun']);
         Excel::import($import, $file);
 
@@ -144,10 +143,9 @@ class AdminController extends Controller
             ];
         })->values();
 
-        $sukses = $import->getImportedCount();
+        $sukses     = $import->getImportedCount();
         $gagalCount = $failuresCollection->count();
 
-        // Simpan log ke DB
         ImportLog::create([
             'filename'    => $originalName,
             'type'        => 'soft',
@@ -161,7 +159,7 @@ class AdminController extends Controller
             'message'     => 'Proses import soft competency selesai.',
             'tahun'       => $data['tahun'],
             'sukses'      => $sukses,
-            'gagal'       => $failures, // tetap detail
+            'gagal'       => $failures,
             'filename'    => $originalName,
             'uploaded_at' => $uploadedAt->format('Y-m-d H:i:s'),
         ]);
@@ -184,10 +182,11 @@ class AdminController extends Controller
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($w) use ($search) {
                     $w->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
+                      ->orWhere('email', 'like', "%{$search}%")
+                      ->orWhere('nik', 'like', "%{$search}%");
                 });
             })
-            ->select('id', 'name', 'email', 'role', 'nik', 'created_at')
+            ->select('id', 'name', 'email', 'role', 'nik', 'unit_kerja', 'created_at')
             ->orderByDesc('id')
             ->paginate($perPage);
 
@@ -206,6 +205,71 @@ class AdminController extends Controller
                 'last'  => $paginator->url($paginator->lastPage()),
             ],
         ]);
+    }
+
+    /**
+     * (ADMIN) POST /api/admin/karyawan
+     * Membuat user/karyawan baru + profil dasarnya.
+     */
+    public function storeKaryawan(CreateEmployeeRequest $request)
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $data = $request->validated();
+
+        try {
+            $user = DB::transaction(function () use ($data) {
+                // 1. Simpan ke tabel users
+                $user = User::create([
+                    'nik'        => $data['nik'],
+                    'name'       => $data['name'],
+                    'email'      => $data['email'],
+                    'role'       => $data['role'],               // 'karyawan' / 'admin'
+                    'unit_kerja' => $data['unit_kerja'] ?? null,
+                    'password'   => Hash::make($data['password']),
+                ]);
+
+                // 2. Simpan ke tabel employee_profiles
+                EmployeeProfile::create([
+                    'user_id'          => $user->id,
+                    'nama_lengkap'     => $data['name'],
+                    'nik'              => $data['nik'],
+                    'email_pribadi'    => $data['email'],
+                    'jabatan_terakhir' => $data['jabatan_terakhir'] ?? null,
+                    'unit_kerja'       => $data['unit_kerja'] ?? null,
+                ]);
+
+                return $user;
+            });
+        } catch (\Throwable $e) {
+            Log::error('GAGAL STORE KARYAWAN', [
+                'msg'   => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'Terjadi kesalahan saat menyimpan karyawan.',
+                'error'   => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+
+        $user->load('profile');
+
+        return response()->json([
+            'message' => 'Karyawan berhasil dibuat.',
+            'data' => [
+                'user' => [
+                    'id'         => $user->id,
+                    'nik'        => $user->nik,
+                    'name'       => $user->name,
+                    'email'      => $user->email,
+                    'role'       => $user->role,
+                    'unit_kerja' => $user->unit_kerja,
+                ],
+            ],
+        ], 201);
     }
 
     /**
@@ -231,7 +295,7 @@ class AdminController extends Controller
     }
 
     /**
-     * ✅ NEW: Reset password karyawan ke default (123).
+     * Reset password karyawan ke default (123).
      */
     public function resetKaryawanPassword(Request $request, User $user)
     {
@@ -250,13 +314,13 @@ class AdminController extends Controller
         // default password
         $defaultPassword = '123';
 
-        // Karena 'password' => 'hashed' di User model, ini otomatis di-hash
+        // 'password' => 'hashed' di User model, jadi tidak perlu Hash::make di sini
         $user->password = $defaultPassword;
         $user->save();
 
         return response()->json([
             'message'          => 'Password karyawan berhasil direset ke default.',
-            'default_password' => $defaultPassword, // optional
+            'default_password' => $defaultPassword,
         ]);
     }
 
@@ -295,8 +359,8 @@ class AdminController extends Controller
         }
 
         $perPage = (int) $request->get('per_page', 20);
-        $type    = $request->get('type');   // optional: 'hard' / 'soft'
-        $tahun   = $request->get('tahun');  // optional: 2023, 2024, ...
+        $type    = $request->get('type');
+        $tahun   = $request->get('tahun');
 
         $query = ImportLog::with('uploader:id,name,email')->orderByDesc('id');
 

@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\HardCompetencyController;
 use App\Http\Controllers\Api\DashboardKaryawanController;
 use App\Http\Controllers\Api\SoftCompetencyController;
 use App\Http\Controllers\Api\EmployeeProfileController;
+use App\Http\Controllers\Api\MasterController;
+use App\Http\Controllers\Api\CityController;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,7 +31,8 @@ Route::prefix('auth')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/master/cities', [\App\Http\Controllers\Api\CityController::class, 'index']);
+    Route::get('/master/cities', [CityController::class, 'index']);
+    Route::get('/master/unit-kerja', [MasterController::class, 'unitKerja']);
 });
 
 /*
@@ -39,19 +42,27 @@ Route::middleware('auth:sanctum')->group(function () {
 */
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
     Route::post('/import-karyawan', [AdminController::class, 'importKaryawan']);
+
+    // CRUD user/karyawan
     Route::get('/karyawan', [AdminController::class, 'listKaryawan']);
+    Route::post('/karyawan', [AdminController::class, 'storeKaryawan']);
     Route::delete('/karyawan/{user}', [AdminController::class, 'deleteKaryawan']);
     Route::delete('/karyawan', [AdminController::class, 'bulkDelete']);
+    Route::post('/karyawan/{user}/reset-password', [AdminController::class, 'resetKaryawanPassword']);
+
+    // Hard & soft competency admin
     Route::post('/import-hard-competencies', [AdminController::class, 'importHardCompetencies']);
     Route::get('/hard-competencies', [HardCompetencyController::class, 'adminIndex']);
     Route::get('/karyawan/{nik}/hard-competencies', [HardCompetencyController::class, 'adminByNik']);
+
+    Route::post('/import-soft-competencies', [AdminController::class, 'importSoftCompetencies']);
     Route::get('/soft-competencies', [SoftCompetencyController::class, 'adminIndex']);
     Route::get('/karyawan/{nik}/soft-competencies', [SoftCompetencyController::class, 'adminByNik']);
-    Route::post('/import-soft-competencies', [AdminController::class, 'importSoftCompetencies']);
+
+    // Profil & logs
     Route::get('/employee-profiles', [EmployeeProfileController::class, 'adminIndex']);
     Route::get('/karyawan/{nik}/profile', [EmployeeProfileController::class, 'adminShowByNik']);
     Route::get('/import-logs', [AdminController::class, 'importLogs']);
-    Route::post('/karyawan/{user}/reset-password', [AdminController::class, 'resetKaryawanPassword']);
 });
 
 /*
