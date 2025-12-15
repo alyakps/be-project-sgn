@@ -11,7 +11,7 @@ use App\Models\ImportLog;
 use App\Models\User;
 use App\Models\EmployeeProfile;
 use App\Http\Requests\CreateEmployeeRequest;
-use Illuminate\Validation\Rule;
+use App\Http\Requests\AdminUpdateEmployeeRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -19,9 +19,10 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class AdminController extends Controller
 {
-    /**
-     * Import karyawan dari Excel/CSV (hanya admin).
-     */
+    /* ======================================================
+     * IMPORT KARYAWAN
+     * ====================================================== */
+
     public function importKaryawan(Request $request)
     {
         $request->validate([
@@ -36,138 +37,30 @@ class AdminController extends Controller
             $import = new KaryawanImport();
             Excel::import($import, $request->file('file'));
         } catch (\Throwable $e) {
+            Log::error('IMPORT KARYAWAN ERROR', ['err' => $e->getMessage()]);
+
             return response()->json([
                 'message' => 'Terjadi error saat import karyawan.',
-                'error'   => $e->getMessage(),
-                'trace'   => config('app.debug') ? $e->getTraceAsString() : null,
             ], 500);
         }
 
-        $failures = collect($import->failures())->map(function ($f) {
-            return [
-                'row'    => $f->row(),
-                'errors' => $f->errors(),
-                'values' => $f->values(),
-            ];
-        })->values();
+        $failures = collect($import->failures())->map(fn ($f) => [
+            'row'    => $f->row(),
+            'errors' => $f->errors(),
+            'values' => $f->values(),
+        ])->values();
 
         return response()->json([
             'message' => 'Proses import selesai.',
             'sukses'  => $import->getImportedCount(),
             'gagal'   => $failures,
-            'catatan' => 'Header yang diterima: nik, nama/name, email, password.',
         ]);
     }
 
-    /**
-     * Import hard competency dari Excel/CSV (hanya admin).
-     */
-    public function importHardCompetencies(Request $request)
-    {
-        $data = $request->validate([
-            'file'  => ['required', 'file', 'mimes:xlsx,xls,csv'],
-            'tahun' => ['required', 'integer', 'min:2000', 'max:2100'],
-        ]);
+    /* ======================================================
+     * LIST KARYAWAN
+     * ====================================================== */
 
-        if (!$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $file         = $request->file('file');
-        $originalName = $file->getClientOriginalName();
-        $uploadedAt   = now();
-
-        $import = new HardCompetencyImport($data['tahun']);
-        Excel::import($import, $file);
-
-        $failuresCollection = collect($import->failures());
-
-        $failures = $failuresCollection->map(function ($f) {
-            return [
-                'row'    => $f->row(),
-                'errors' => $f->errors(),
-                'values' => $f->values(),
-            ];
-        })->values();
-
-        $sukses      = $import->getImportedCount();
-        $gagalCount  = $failuresCollection->count();
-
-        ImportLog::create([
-            'filename'    => $originalName,
-            'type'        => 'hard',
-            'tahun'       => $data['tahun'],
-            'sukses'      => $sukses,
-            'gagal'       => $gagalCount,
-            'uploaded_by' => $request->user()->id,
-        ]);
-
-        return response()->json([
-            'message'     => 'Proses import hard competency selesai.',
-            'tahun'       => $data['tahun'],
-            'sukses'      => $sukses,
-            'gagal'       => $failures,
-            'filename'    => $originalName,
-            'uploaded_at' => $uploadedAt->format('Y-m-d H:i:s'),
-        ]);
-    }
-
-    /**
-     * Import soft competency dari Excel/CSV (hanya admin).
-     */
-    public function importSoftCompetencies(Request $request)
-    {
-        $data = $request->validate([
-            'file'  => ['required', 'file', 'mimes:xlsx,xls,csv'],
-            'tahun' => ['required', 'integer', 'min:2000', 'max:2100'],
-        ]);
-
-        if (!$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $file         = $request->file('file');
-        $originalName = $file->getClientOriginalName();
-        $uploadedAt   = now();
-
-        $import = new SoftCompetencyImport($data['tahun']);
-        Excel::import($import, $file);
-
-        $failuresCollection = collect($import->failures());
-
-        $failures = $failuresCollection->map(function ($f) {
-            return [
-                'row'    => $f->row(),
-                'errors' => $f->errors(),
-                'values' => $f->values(),
-            ];
-        })->values();
-
-        $sukses     = $import->getImportedCount();
-        $gagalCount = $failuresCollection->count();
-
-        ImportLog::create([
-            'filename'    => $originalName,
-            'type'        => 'soft',
-            'tahun'       => $data['tahun'],
-            'sukses'      => $sukses,
-            'gagal'       => $gagalCount,
-            'uploaded_by' => $request->user()->id,
-        ]);
-
-        return response()->json([
-            'message'     => 'Proses import soft competency selesai.',
-            'tahun'       => $data['tahun'],
-            'sukses'      => $sukses,
-            'gagal'       => $failures,
-            'filename'    => $originalName,
-            'uploaded_at' => $uploadedAt->format('Y-m-d H:i:s'),
-        ]);
-    }
-
-    /**
-     * List karyawan.
-     */
     public function listKaryawan(Request $request)
     {
         if (!$request->user()->isAdmin()) {
@@ -179,14 +72,14 @@ class AdminController extends Controller
 
         $paginator = User::query()
             ->where('role', 'karyawan')
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($w) use ($search) {
+            ->when($search !== '', function ($q) use ($search) {
+                $q->where(fn ($w) =>
                     $w->where('name', 'like', "%{$search}%")
                       ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('nik', 'like', "%{$search}%");
-                });
+                      ->orWhere('nik', 'like', "%{$search}%")
+                );
             })
-            ->select('id', 'name', 'email', 'role', 'nik', 'unit_kerja', 'created_at')
+            ->select('id', 'name', 'email', 'nik', 'unit_kerja', 'created_at')
             ->orderByDesc('id')
             ->paginate($perPage);
 
@@ -198,19 +91,13 @@ class AdminController extends Controller
                 'total'        => $paginator->total(),
                 'last_page'    => $paginator->lastPage(),
             ],
-            'links' => [
-                'first' => $paginator->url(1),
-                'prev'  => $paginator->previousPageUrl(),
-                'next'  => $paginator->nextPageUrl(),
-                'last'  => $paginator->url($paginator->lastPage()),
-            ],
         ]);
     }
 
-    /**
-     * (ADMIN) POST /api/admin/karyawan
-     * Membuat user/karyawan baru + profil dasarnya.
-     */
+    /* ======================================================
+     * CREATE KARYAWAN
+     * ====================================================== */
+
     public function storeKaryawan(CreateEmployeeRequest $request)
     {
         if (!$request->user()->isAdmin()) {
@@ -220,73 +107,97 @@ class AdminController extends Controller
         $data = $request->validated();
 
         try {
-            $user = DB::transaction(function () use ($data) {
-                // 1. Simpan ke tabel users
+            DB::transaction(function () use ($data) {
                 $user = User::create([
                     'nik'        => $data['nik'],
                     'name'       => $data['name'],
                     'email'      => $data['email'],
-                    'role'       => $data['role'],               // 'karyawan' / 'admin'
+                    'role'       => $data['role'],
                     'unit_kerja' => $data['unit_kerja'] ?? null,
                     'password'   => Hash::make($data['password']),
                 ]);
 
-                // 2. Simpan ke tabel employee_profiles
                 EmployeeProfile::create([
                     'user_id'          => $user->id,
                     'nama_lengkap'     => $data['name'],
                     'nik'              => $data['nik'],
                     'email_pribadi'    => $data['email'],
                     'jabatan_terakhir' => $data['jabatan_terakhir'] ?? null,
-                    'unit_kerja'       => $data['unit_kerja'] ?? null,
                 ]);
-
-                return $user;
             });
         } catch (\Throwable $e) {
-            Log::error('GAGAL STORE KARYAWAN', [
-                'msg'   => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return response()->json([
-                'message' => 'Terjadi kesalahan saat menyimpan karyawan.',
-                'error'   => config('app.debug') ? $e->getMessage() : null,
-            ], 500);
+            Log::error('STORE KARYAWAN ERROR', ['err' => $e->getMessage()]);
+            return response()->json(['message' => 'Gagal menyimpan karyawan.'], 500);
         }
-
-        $user->load('profile');
 
         return response()->json([
             'message' => 'Karyawan berhasil dibuat.',
-            'data' => [
-                'user' => [
-                    'id'         => $user->id,
-                    'nik'        => $user->nik,
-                    'name'       => $user->name,
-                    'email'      => $user->email,
-                    'role'       => $user->role,
-                    'unit_kerja' => $user->unit_kerja,
-                ],
-            ],
         ], 201);
     }
 
-    /**
-     * Hapus karyawan.
-     */
-    public function deleteKaryawan(Request $request, User $user)
+    /* ======================================================
+     * UPDATE PROFIL KARYAWAN (ADMIN)
+     * ====================================================== */
+
+    public function updateKaryawan(AdminUpdateEmployeeRequest $request, string $nik)
     {
         if (!$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if ($user->role !== 'karyawan') {
-            return response()->json(['message' => 'Hanya karyawan yang boleh dihapus.'], 422);
+        $user = User::with('profile')
+            ->where('nik', $nik)
+            ->where('role', 'karyawan')
+            ->first();
+
+        if (!$user) {
+            return response()->json(['message' => 'Karyawan tidak ditemukan.'], 404);
         }
 
-        if ($user->id === $request->user()->id) {
-            return response()->json(['message' => 'Tidak boleh menghapus akun sendiri.'], 422);
+        DB::transaction(function () use ($request, $user) {
+            $user->update([
+                'name'       => $request->name,
+                'email'      => $request->email,
+                'unit_kerja' => $request->unit_kerja,
+            ]);
+
+            $profile = $user->profile ?? EmployeeProfile::create([
+                'user_id'       => $user->id,
+                'nik'           => $user->nik,
+                'nama_lengkap'  => $user->name,
+                'email_pribadi' => $user->email,
+            ]);
+
+            $profile->fill($request->except(['photo']));
+            $profile->save();
+        });
+
+        $user->load('profile');
+        $user->profile->unit_kerja = $user->unit_kerja;
+
+        return response()->json([
+            'message' => 'Profil karyawan berhasil diperbarui.',
+            'data' => [
+                'user' => $user,
+                'profile' => $user->profile,
+            ],
+        ]);
+    }
+
+    /* ======================================================
+     * DELETE KARYAWAN
+     * ====================================================== */
+
+    public function deleteKaryawan(Request $request, string $nik)
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $user = User::where('nik', $nik)->where('role', 'karyawan')->first();
+
+        if (!$user) {
+            return response()->json(['message' => 'Karyawan tidak ditemukan.'], 404);
         }
 
         $user->delete();
@@ -294,109 +205,55 @@ class AdminController extends Controller
         return response()->json(['message' => 'Karyawan berhasil dihapus.']);
     }
 
-    /**
-     * Reset password karyawan ke default (123).
-     */
-    public function resetKaryawanPassword(Request $request, User $user)
+    /* ======================================================
+     * RESET PASSWORD
+     * ====================================================== */
+
+    public function resetKaryawanPassword(Request $request, string $nik)
     {
         if (!$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if ($user->role !== 'karyawan') {
-            return response()->json(['message' => 'Hanya karyawan yang boleh direset passwordnya.'], 422);
+        $user = User::where('nik', $nik)->where('role', 'karyawan')->first();
+
+        if (!$user) {
+            return response()->json(['message' => 'Karyawan tidak ditemukan.'], 404);
         }
 
-        if ($user->id === $request->user()->id) {
-            return response()->json(['message' => 'Tidak boleh reset password akun sendiri dari sini.'], 422);
-        }
-
-        // default password
-        $defaultPassword = '123';
-
-        // 'password' => 'hashed' di User model, jadi tidak perlu Hash::make di sini
-        $user->password = $defaultPassword;
+        $user->password = '123';
         $user->save();
 
         return response()->json([
-            'message'          => 'Password karyawan berhasil direset ke default.',
-            'default_password' => $defaultPassword,
+            'message' => 'Password karyawan berhasil direset.',
+            'default_password' => '123',
         ]);
     }
 
-    /**
-     * Bulk delete.
-     */
-    public function bulkDelete(Request $request)
-    {
-        if (!$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+    /* ======================================================
+     * IMPORT LOGS (✅ FIX – METHOD YANG KURANG)
+     * ====================================================== */
 
-        $data = $request->validate([
-            'ids'   => ['required', 'array', 'min:1'],
-            'ids.*' => ['integer', 'distinct', Rule::exists('users', 'id')],
-        ]);
-
-        $deleted = User::whereIn('id', $data['ids'])
-            ->where('role', 'karyawan')
-            ->where('id', '!=', $request->user()->id)
-            ->delete();
-
-        return response()->json([
-            'message' => 'Bulk delete selesai.',
-            'deleted' => $deleted,
-        ]);
-    }
-
-    /**
-     * Log import (hard & soft) untuk admin.
-     */
     public function importLogs(Request $request)
     {
         if (!$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $perPage = (int) $request->get('per_page', 20);
-        $type    = $request->get('type');
-        $tahun   = $request->get('tahun');
-
-        $query = ImportLog::with('uploader:id,name,email')->orderByDesc('id');
-
-        if ($type) {
-            $query->where('type', $type);
-        }
-
-        if ($tahun) {
-            $query->where('tahun', (int) $tahun);
-        }
-
-        $paginator = $query->paginate($perPage);
+        $logs = ImportLog::query()
+            ->orderByDesc('id')
+            ->get();
 
         return response()->json([
-            'data' => $paginator->getCollection()->map(function (ImportLog $log) {
+            'data' => $logs->map(function (ImportLog $log) {
                 return [
-                    'id'          => $log->id,
-                    'filename'    => $log->filename,
-                    'type'        => $log->type,
-                    'tahun'       => $log->tahun,
-                    'sukses'      => $log->sukses,
-                    'gagal'       => $log->gagal,
-                    'uploaded_at' => optional($log->created_at)->format('Y-m-d H:i:s'),
-                    'uploaded_by' => [
-                        'id'    => $log->uploader?->id,
-                        'name'  => $log->uploader?->name,
-                        'email' => $log->uploader?->email,
-                    ],
+                    'id'         => $log->id,
+                    'filename'   => $log->filename,
+                    'type'       => $log->type,
+                    'tahun'      => $log->tahun,
+                    'created_at' => optional($log->created_at)->format('Y-m-d H:i:s'),
                 ];
             }),
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'per_page'     => $paginator->perPage(),
-                'total'        => $paginator->total(),
-                'last_page'    => $paginator->lastPage(),
-            ],
         ]);
     }
 }

@@ -46,7 +46,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     // CRUD user/karyawan
     Route::get('/karyawan', [AdminController::class, 'listKaryawan']);
     Route::post('/karyawan', [AdminController::class, 'storeKaryawan']);
-    Route::delete('/karyawan/{user}', [AdminController::class, 'deleteKaryawan']);
+    Route::delete('/karyawan/{nik}', [AdminController::class, 'deleteKaryawan']);
     Route::delete('/karyawan', [AdminController::class, 'bulkDelete']);
     Route::post('/karyawan/{user}/reset-password', [AdminController::class, 'resetKaryawanPassword']);
 
@@ -63,6 +63,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/employee-profiles', [EmployeeProfileController::class, 'adminIndex']);
     Route::get('/karyawan/{nik}/profile', [EmployeeProfileController::class, 'adminShowByNik']);
     Route::get('/import-logs', [AdminController::class, 'importLogs']);
+    Route::put('/karyawan/{nik}', [AdminController::class, 'updateKaryawan']);
+
 });
 
 /*
