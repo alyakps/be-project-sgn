@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\SoftCompetencyController;
 use App\Http\Controllers\Api\EmployeeProfileController;
 use App\Http\Controllers\Api\MasterController;
 use App\Http\Controllers\Api\CityController;
+use App\Http\Controllers\Api\DashboardController;
 
 /*
 |--------------------------------------------------------------------------
@@ -65,6 +66,12 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/import-logs', [AdminController::class, 'importLogs']);
     Route::put('/karyawan/{nik}', [AdminController::class, 'updateKaryawan']);
 
+    /*
+    |--------------------------------------------------------------------------
+    | DASHBOARD ADMIN (TAMBAHAN)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/dashboard/competency-summary', [DashboardController::class, 'competencySummary']);
 });
 
 /*

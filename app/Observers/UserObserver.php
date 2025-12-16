@@ -17,11 +17,11 @@ class UserObserver
             return;
         }
 
-        // Hanya jalan kalau nilai unit_kerja memang berubah
-        if (!$user->wasChanged('unit_kerja')) {
-            return;
-        }
-
+        /**
+         * ✅ Kunci: saat create, unit_kerja juga dianggap "changed",
+         * tapi pada beberapa flow bisa saja nilainya null.
+         * Kita tetap sync setiap save, selama key unit_kerja memang ada.
+         */
         $unitKerjaBaru = $user->unit_kerja;
 
         // Pastikan profile ada, lalu sinkron unit_kerja-nya
@@ -32,6 +32,8 @@ class UserObserver
                 'nama_lengkap'  => $user->name,
                 'nik'           => $user->nik,
                 'email_pribadi' => $user->email,
+
+                // single source of truth tetap users.unit_kerja
                 'unit_kerja'    => $unitKerjaBaru,
             ]
         );

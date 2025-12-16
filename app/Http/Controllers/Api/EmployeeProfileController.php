@@ -29,9 +29,15 @@ class EmployeeProfileController extends Controller
             ]
         );
 
-        // 🔹 Sumber resmi unit_kerja: dari tabel users
-        //    (admin assign di import karyawan / halaman admin)
-        $profile->unit_kerja = $user->unit_kerja;
+        // ✅ Single source of truth: users.unit_kerja
+        $unit = $user->unit_kerja;
+
+        // ✅ Auto-backfill: kalau di table employee_profiles masih null / beda, sync otomatis
+        // saveQuietly supaya tidak memicu event berantai yang tidak perlu
+        if ($profile->unit_kerja !== $unit) {
+            $profile->unit_kerja = $unit;
+            $profile->saveQuietly();
+        }
 
         return response()->json([
             'data' => [
@@ -71,17 +77,18 @@ class EmployeeProfileController extends Controller
             $profile->photo_path = $path;
         }
 
-        // 🚫 Penting:
-        //    - Abaikan "unit_kerja" dari input user (hanya admin yang boleh ubah di tabel users)
-        //    - Abaikan file "photo" juga dari mass assignment
+        // 🚫 Abaikan unit_kerja dari input user
         $data = $request->except('photo');
         unset($data['unit_kerja']);
 
         $profile->fill($data);
         $profile->save();
 
-        // sinkron lagi unit_kerja untuk response (selalu dari users)
-        $profile->unit_kerja = $user->unit_kerja;
+        // ✅ pastikan tersinkron juga setelah save (optional backfill)
+        if ($profile->unit_kerja !== $user->unit_kerja) {
+            $profile->unit_kerja = $user->unit_kerja;
+            $profile->saveQuietly();
+        }
 
         return response()->json([
             'message' => 'Profil berhasil diperbarui.',
@@ -92,11 +99,6 @@ class EmployeeProfileController extends Controller
     /**
      * (ADMIN) GET /api/admin/employee-profiles
      * List profil semua karyawan (search + pagination).
-     *
-     * Query:
-     *  - q        : cari nama / email / nik
-     *  - nik      : filter nik spesifik
-     *  - per_page : default 10
      */
     public function adminIndex(Request $request)
     {
@@ -119,7 +121,6 @@ class EmployeeProfileController extends Controller
         $paginator = $query->paginate($perPage);
 
         $items = $paginator->getCollection()->map(function (EmployeeProfile $profile) {
-            // 🔹 Tarik unit_kerja dari user juga (kalau ada)
             $user = $profile->user;
 
             return [
@@ -131,7 +132,10 @@ class EmployeeProfileController extends Controller
                 'pendidikan'       => $profile->pendidikan,
                 'handphone'        => $profile->handphone,
                 'email_pribadi'    => $profile->email_pribadi,
-                'unit_kerja'       => $user?->unit_kerja, // <-- dari users
+
+                // ✅ tampilkan unit kerja dari users
+                'unit_kerja'       => $user?->unit_kerja,
+
                 'photo_url'        => $profile->photo_path
                     ? Storage::disk('public')->url($profile->photo_path)
                     : null,
@@ -174,9 +178,15 @@ class EmployeeProfileController extends Controller
             ], 404);
         }
 
-        // 🔹 Pastikan unit_kerja diambil dari user
+        // ✅ Single source of truth: users.unit_kerja
         if ($profile->user) {
-            $profile->unit_kerja = $profile->user->unit_kerja;
+            $unit = $profile->user->unit_kerja;
+
+            // ✅ Auto-backfill juga untuk endpoint admin
+            if ($profile->unit_kerja !== $unit) {
+                $profile->unit_kerja = $unit;
+                $profile->saveQuietly();
+            }
         }
 
         return response()->json([
@@ -190,7 +200,7 @@ class EmployeeProfileController extends Controller
     }
 
     // ==========================
-    // 🔹 Helper transform
+    // Helper transform
     // ==========================
     private function transformUser(User $user): array
     {
@@ -200,7 +210,7 @@ class EmployeeProfileController extends Controller
             'name'       => $user->name,
             'email'      => $user->email,
             'role'       => $user->role,
-            'unit_kerja' => $user->unit_kerja, // 🔹 bisa dipakai di tempat lain
+            'unit_kerja' => $user->unit_kerja,
         ];
     }
 
@@ -221,7 +231,7 @@ class EmployeeProfileController extends Controller
             'jenis_kelamin'     => $profile->jenis_kelamin,
             'agama'             => $profile->agama,
             'jabatan_terakhir'  => $profile->jabatan_terakhir,
-            'unit_kerja'        => $profile->unit_kerja, // 🔹 sekarang sudah diset dari users di caller
+            'unit_kerja'        => $profile->unit_kerja,
             'alamat_rumah'      => $profile->alamat_rumah,
             'handphone'         => $profile->handphone,
             'email_pribadi'     => $profile->email_pribadi,
