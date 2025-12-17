@@ -20,6 +20,9 @@ class User extends Authenticatable
         'password',
         'role',
         'unit_kerja',
+
+        // ✅ Tambahan
+        'must_change_password',
     ];
 
     protected $hidden = ['password','remember_token'];
@@ -29,6 +32,9 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed', // string otomatis di-hash
+
+            // ✅ Tambahan
+            'must_change_password' => 'boolean',
         ];
     }
 

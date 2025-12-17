@@ -44,6 +44,9 @@ class AuthController extends Controller
                 'name'  => $user->name,
                 'email' => $user->email,
                 'role'  => $user->role,
+
+                // ✅ Tambahan
+                'must_change_password' => (bool) $user->must_change_password,
             ],
         ]);
     }
@@ -62,6 +65,9 @@ class AuthController extends Controller
             'name'  => $u->name,
             'email' => $u->email,
             'role'  => $u->role,
+
+            // ✅ Tambahan
+            'must_change_password' => (bool) $u->must_change_password,
 
             'profile' => [
                 'nama_lengkap'        => $p->nama_lengkap ?? null,
@@ -122,6 +128,10 @@ class AuthController extends Controller
 
         // Update password (Laravel auto-hash)
         $user->password = Hash::make($data['new_password']);
+
+        // ✅ Reset flag wajib ganti password
+        $user->must_change_password = false;
+
         $user->save();
 
         return response()->json([

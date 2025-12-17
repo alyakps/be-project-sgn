@@ -414,12 +414,19 @@ class AdminController extends Controller
             return response()->json(['message' => 'Karyawan tidak ditemukan.'], 404);
         }
 
-        $user->password = '123';
+        $defaultPassword = '123';
+
+        // ✅ FIX: harus hash biar bisa login
+        $user->password = Hash::make($defaultPassword);
+
+        // ✅ Trigger: wajib ganti password setelah reset admin
+        $user->must_change_password = true;
+
         $user->save();
 
         return response()->json([
             'message' => 'Password karyawan berhasil direset.',
-            'default_password' => '123',
+            'default_password' => $defaultPassword,
         ]);
     }
 

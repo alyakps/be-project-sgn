@@ -14,6 +14,10 @@ return new class extends Migration {
             $table->string('unit_kerja')->nullable();                       // dipakai import Excel
             $table->string('email')->unique();
             $table->string('password');
+
+            // ✅ Tambahan: flag wajib ganti password setelah reset admin
+            $table->boolean('must_change_password')->default(false);
+
             $table->string('role')->default('karyawan');  // admin / karyawan
             $table->timestamp('email_verified_at')->nullable();
             $table->rememberToken();

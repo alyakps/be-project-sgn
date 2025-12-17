@@ -49,7 +49,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::post('/karyawan', [AdminController::class, 'storeKaryawan']);
     Route::delete('/karyawan/{nik}', [AdminController::class, 'deleteKaryawan']);
     Route::delete('/karyawan', [AdminController::class, 'bulkDelete']);
-    Route::post('/karyawan/{user}/reset-password', [AdminController::class, 'resetKaryawanPassword']);
+    Route::post('/karyawan/{nik}/reset-password', [AdminController::class, 'resetKaryawanPassword']);
 
     // Hard & soft competency admin
     Route::post('/import-hard-competencies', [AdminController::class, 'importHardCompetencies']);
