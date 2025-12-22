@@ -93,13 +93,14 @@ class KaryawanImport implements
             ]
         );
 
-        // AUTO-BUAT EMPLOYEE PROFILE
-        EmployeeProfile::firstOrCreate(
+        // ✅ FIX MINIMAL: sinkronkan profile juga (biar unit_kerja ke-update)
+        EmployeeProfile::updateOrCreate(
             ['user_id' => $user->id],
             [
                 'nama_lengkap'  => $user->name,
                 'nik'           => $user->nik,
                 'email_pribadi' => $user->email,
+                'unit_kerja'    => $user->unit_kerja,
             ]
         );
 
