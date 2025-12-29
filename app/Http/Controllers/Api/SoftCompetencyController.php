@@ -31,6 +31,7 @@ class SoftCompetencyController extends Controller
         // 0) AMBIL DAFTAR TAHUN YANG ADA UNTUK USER INI
         // =========================
         $availableYears = SoftCompetency::forNik($user->nik)
+            ->where('is_active', true) // ✅ ADDED
             ->selectRaw('DISTINCT tahun')
             ->orderByDesc('tahun')
             ->pluck('tahun')
@@ -42,6 +43,7 @@ class SoftCompetencyController extends Controller
         // =========================
         $allRows = SoftCompetency::forNik($user->nik)
             ->forYear($tahun)
+            ->where('is_active', true) // ✅ ADDED
             ->orderBy('kode')
             ->get();
 
@@ -71,6 +73,7 @@ class SoftCompetencyController extends Controller
 
         // Hitung rata-rata per id_kompetensi (semua karyawan)
         $avgByKom = SoftCompetency::forYear($tahun)
+            ->where('is_active', true) // ✅ ADDED
             ->whereIn('id_kompetensi', $allRows->pluck('id_kompetensi'))
             ->selectRaw('id_kompetensi, AVG(nilai) as avg_nilai')
             ->groupBy('id_kompetensi')
@@ -106,6 +109,7 @@ class SoftCompetencyController extends Controller
         // =========================
         $itemsQuery = SoftCompetency::forNik($user->nik)
             ->forYear($tahun)
+            ->where('is_active', true) // ✅ ADDED
             ->orderBy('kode');
 
         $paginator = $itemsQuery->paginate($perPage);
@@ -149,9 +153,6 @@ class SoftCompetencyController extends Controller
      * (ADMIN ONLY)
      *
      * GET /api/admin/karyawan/{nik}/soft-competencies?tahun=2025&per_page=10
-     *
-     * Admin lihat soft competency 1 karyawan (by NIK) dengan
-     * struktur mirip indexSelf: nik + tahun + available_years + chart + items.
      */
     public function adminByNik(Request $request, string $nik)
     {
@@ -162,6 +163,7 @@ class SoftCompetencyController extends Controller
         // 0) AMBIL DAFTAR TAHUN YANG ADA UNTUK NIK INI
         // =========================
         $availableYears = SoftCompetency::forNik($nik)
+            ->where('is_active', true) // ✅ ADDED
             ->selectRaw('DISTINCT tahun')
             ->orderByDesc('tahun')
             ->pluck('tahun')
@@ -173,6 +175,7 @@ class SoftCompetencyController extends Controller
         // =========================
         $allRows = SoftCompetency::forNik($nik)
             ->forYear($tahun)
+            ->where('is_active', true) // ✅ ADDED
             ->orderBy('kode')
             ->get();
 
@@ -204,6 +207,7 @@ class SoftCompetencyController extends Controller
         // 2) Hitung rata-rata per id_kompetensi (semua karyawan di tahun tsb)
         // =========================
         $avgByKom = SoftCompetency::forYear($tahun)
+            ->where('is_active', true) // ✅ ADDED
             ->whereIn('id_kompetensi', $allRows->pluck('id_kompetensi'))
             ->selectRaw('id_kompetensi, AVG(nilai) as avg_nilai')
             ->groupBy('id_kompetensi')
@@ -239,6 +243,7 @@ class SoftCompetencyController extends Controller
         // =========================
         $itemsQuery = SoftCompetency::forNik($nik)
             ->forYear($tahun)
+            ->where('is_active', true) // ✅ ADDED
             ->orderBy('kode');
 
         $paginator = $itemsQuery->paginate($perPage);
@@ -282,13 +287,6 @@ class SoftCompetencyController extends Controller
      * (ADMIN ONLY)
      *
      * GET /api/admin/soft-competencies
-     *
-     * Admin lihat list global soft competency dengan filter & pagination.
-     * Query:
-     *  - nik      : filter per NIK tertentu (opsional)
-     *  - q        : keyword (kode/nama/status/deskripsi)
-     *  - tahun    : tahun penilaian
-     *  - per_page : default 10
      */
     public function adminIndex(Request $request)
     {
@@ -298,6 +296,7 @@ class SoftCompetencyController extends Controller
         $tahun   = $request->integer('tahun'); // bisa null
 
         $query = SoftCompetency::query()
+            ->where('is_active', true) // ✅ ADDED
             ->when($nik !== '', fn ($q) => $q->forNik($nik))
             ->forYear($tahun)
             ->search($search)
@@ -327,7 +326,6 @@ class SoftCompetencyController extends Controller
 
     /**
      * Helper untuk build list soft competency berdasarkan NIK (admin / karyawan).
-     * (Sekarang tidak dipakai di adminByNik, tapi boleh disimpan kalau mau reuse untuk endpoint lain.)
      */
     protected function buildListForNik(Request $request, string $nik)
     {
@@ -338,6 +336,7 @@ class SoftCompetencyController extends Controller
         $query = SoftCompetency::forNik($nik)
             ->forYear($tahun)
             ->search($search)
+            ->where('is_active', true) // ✅ ADDED
             ->orderBy('kode');
 
         $paginator = $query->paginate($perPage);

@@ -3,7 +3,7 @@
 namespace App\Imports;
 
 use App\Models\SoftCompetency;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
@@ -12,6 +12,7 @@ use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\WithBatchInserts;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\SkipsFailures;
+use Maatwebsite\Excel\Concerns\RemembersRowNumber;
 
 class SoftCompetencyImport implements
     ToModel,
@@ -23,100 +24,137 @@ class SoftCompetencyImport implements
     WithChunkReading
 {
     use SkipsFailures;
+    use RemembersRowNumber;
 
     protected int $tahun;
+    protected int $importLogId;
     protected int $imported = 0;
 
-    public function __construct(int $tahun)
+    protected array $rowErrors = [];
+
+    public function __construct(int $tahun, int $importLogId)
     {
         $this->tahun = $tahun;
+        $this->importLogId = $importLogId;
+    }
+
+    private function resolveKey(array $row, array $aliases): ?string
+    {
+        $normalized = [];
+        foreach ($row as $k => $_) {
+            $normalized[trim(mb_strtolower((string) $k))] = (string) $k;
+        }
+
+        foreach ($aliases as $alias) {
+            $key = trim(mb_strtolower((string) $alias));
+            if (isset($normalized[$key])) return $normalized[$key];
+        }
+
+        return null;
+    }
+
+    private function asString($v): string
+    {
+        return trim((string) ($v ?? ''));
+    }
+
+    private function normalizeNik(string $nik): string
+    {
+        $nik = trim($nik);
+        if ($nik !== '' && is_numeric($nik)) {
+            $nik = rtrim(rtrim((string) $nik, '0'), '.');
+        }
+        $nik = preg_replace('/\s+/', '', $nik) ?? $nik;
+        return $nik;
     }
 
     public function model(array $row)
     {
-        // CAST SEMUA KE STRING (fix error nik must be string)
-        $nik       = trim((string)($row['nik'] ?? ''));
-        $idKom     = trim((string)($row['id_kompetensi'] ?? ''));
-        $kode      = trim((string)($row['kode'] ?? ''));
-        $nama      = trim((string)($row['nama_kompetensi'] ?? ''));
-        $statusRaw = trim((string)($row['status'] ?? ''));
-        $nilaiRaw  = $row['nilai'] ?? null;
-        $deskripsi = trim((string)($row['deskripsi'] ?? ''));
+        $kNik    = $this->resolveKey($row, ['nik', 'NIK']);
+        $kKode   = $this->resolveKey($row, ['kode', 'kode_kompetensi', 'competency_code', 'kode kompetensi']);
+        $kNama   = $this->resolveKey($row, ['nama_kompetensi', 'nama kompetensi', 'kompetensi', 'nama']);
+        $kIdKom  = $this->resolveKey($row, ['id_kompetensi', 'id kompetensi', 'competency_id']);
+        $kStatus = $this->resolveKey($row, ['status']);
+        $kNilai  = $this->resolveKey($row, ['nilai', 'score', 'skor']);
+        $kDesk   = $this->resolveKey($row, ['deskripsi', 'description', 'keterangan']);
 
-        // Normalisasi status
-        $statusLower = mb_strtolower($statusRaw);
-        if ($statusLower === 'tercapai') {
-            $status = 'tercapai';
-        } elseif ($statusLower === 'tidak tercapai') {
-            $status = 'tidak tercapai';
-        } else {
-            $status = $statusLower;
+        $nik   = $this->normalizeNik($kNik ? $this->asString($row[$kNik] ?? '') : '');
+        $kode  = $kKode ? $this->asString($row[$kKode] ?? '') : '';
+        $nama  = $kNama ? $this->asString($row[$kNama] ?? '') : '';
+        $idKom = $kIdKom ? $this->asString($row[$kIdKom] ?? '') : '';
+        $status= $kStatus ? $this->asString($row[$kStatus] ?? '') : '';
+        $nilaiRaw = $kNilai ? $this->asString($row[$kNilai] ?? '') : '';
+        $desk  = $kDesk ? $this->asString($row[$kDesk] ?? '') : '';
+
+        if ($nik === '') {
+            $this->rowErrors[] = [
+                'row' => $this->getRowNumber(),
+                'message' => 'NIK kosong (baris di-skip).',
+            ];
+            return null;
         }
 
-        $nilai = is_null($nilaiRaw) ? null : (int) $nilaiRaw;
+        $nilai = null;
+        if ($nilaiRaw !== '') {
+            if (is_numeric($nilaiRaw)) $nilai = (int) round((float) $nilaiRaw);
+        }
 
-        // UPSERT: unik berdasarkan (nik + id_kompetensi + tahun)
-        SoftCompetency::updateOrCreate(
-            [
-                'nik'           => $nik,
-                'id_kompetensi' => $idKom,
-                'tahun'         => $this->tahun,
-            ],
-            [
-                'kode'            => $kode,
-                'nama_kompetensi' => $nama,
-                'status'          => $status,
-                'nilai'           => $nilai,
-                'deskripsi'       => $deskripsi ?: null,
-            ]
-        );
+        try {
+            $uniqueKey = [
+                'nik'   => $nik,
+                'tahun' => $this->tahun,
+                'kode'  => $kode !== '' ? $kode : ($nama !== '' ? $nama : 'UNKNOWN'),
+            ];
 
-        $this->imported++;
+            SoftCompetency::updateOrCreate(
+                $uniqueKey,
+                [
+                    'nik'             => $nik,
+                    'tahun'           => $this->tahun,
+                    'id_kompetensi'   => $idKom !== '' ? $idKom : null,
+                    'kode'            => $kode,
+                    'nama_kompetensi' => $nama,
+                    'status'          => $status !== '' ? $status : null,
+                    'nilai'           => $nilai,
+                    'deskripsi'       => $desk !== '' ? $desk : null,
+                    'is_active'       => true,
+                    'import_log_id'   => $this->importLogId,
+                ]
+            );
 
-        return null; // jangan return model karena pakai updateOrCreate
+            $this->imported++;
+            return null;
+        } catch (\Throwable $e) {
+            Log::warning('SOFT COMPETENCY ROW ERROR', [
+                'row' => $this->getRowNumber(),
+                'nik' => $nik,
+                'err' => $e->getMessage(),
+            ]);
+
+            $this->rowErrors[] = [
+                'row' => $this->getRowNumber(),
+                'message' => $e->getMessage(),
+                'nik' => $nik,
+                'kode' => $kode,
+            ];
+            return null;
+        }
     }
 
     public function rules(): array
     {
         return [
-            '*.nik'             => ['required', 'regex:/^\d+$/'], // FIXED → fleksibel & aman
-            '*.id_kompetensi'   => ['required'],
-            '*.kode'            => ['required', 'string'],
-            '*.nama_kompetensi' => ['required', 'string'],
-            '*.status'          => [
-                'required',
-                Rule::in([
-                    'Tercapai',
-                    'Tidak Tercapai',
-                    'tercapai',
-                    'tidak tercapai',
-                ]),
-            ],
-            '*.nilai'           => ['required', 'integer', 'min:0', 'max:100'],
+            '*.nik' => ['nullable'],
         ];
     }
 
     public function customValidationMessages(): array
     {
-        return [
-            '*.nik.required'           => 'Kolom NIK wajib diisi.',
-            '*.nik.regex'              => 'NIK harus berupa angka.',
-
-            '*.id_kompetensi.required' => 'Kolom id_kompetensi wajib diisi.',
-            '*.kode.required'          => 'Kolom kode wajib diisi.',
-            '*.nama_kompetensi.required' => 'Kolom nama_kompetensi wajib diisi.',
-
-            '*.status.required'        => 'Kolom status wajib diisi.',
-            '*.status.in'              => 'Status harus "Tercapai" atau "Tidak Tercapai".',
-
-            '*.nilai.required'         => 'Kolom nilai wajib diisi.',
-            '*.nilai.integer'          => 'Nilai harus berupa angka.',
-            '*.nilai.min'              => 'Nilai minimal 0.',
-            '*.nilai.max'              => 'Nilai maksimal 100.',
-        ];
+        return [];
     }
 
     public function getImportedCount(): int { return $this->imported; }
+    public function getRowErrors(): array { return $this->rowErrors; }
     public function batchSize(): int { return 500; }
     public function chunkSize(): int { return 500; }
 }

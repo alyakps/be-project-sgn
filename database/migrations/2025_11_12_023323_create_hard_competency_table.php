@@ -6,30 +6,31 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('hard_competencies', function (Blueprint $table) {
             $table->id();
-            $table->string('nik', 32)->index();                     // ID unik user
-            $table->unsignedSmallInteger('tahun')->index();         // tahun penilaian, misal 2025
 
-            // ✅ id_kompetensi dijadikan bagian dari unique key
-            $table->string('id_kompetensi', 32);                    // Contoh: 4821
+            $table->string('nik', 32)->index();
+            $table->unsignedSmallInteger('tahun')->index();
+            $table->string('id_kompetensi', 32);
 
-            $table->string('kode', 64)->index();                    // Contoh: HAK.MAK.008
+            $table->string('kode', 64)->index();
             $table->string('nama_kompetensi', 255);
             $table->string('job_family_kompetensi', 128);
             $table->string('sub_job_family_kompetensi', 128)->nullable();
             $table->enum('status', ['tercapai', 'tidak tercapai']);
-            $table->unsignedTinyInteger('nilai');                   // 0–100
+            $table->unsignedTinyInteger('nilai'); // 0–100
             $table->text('deskripsi')->nullable();
+
+            // ✅ untuk "Batalkan": kompetensi hasil import dinonaktifkan
+            $table->boolean('is_active')->default(true)->index();
+
+            // ✅ tag asal import (tanpa FK)
+            $table->unsignedBigInteger('import_log_id')->nullable()->index();
+
             $table->timestamps();
 
-            // ✅ 1 user boleh punya kode yang sama di tahun yang sama,
-            // selama id_kompetensinya berbeda
             $table->unique(['nik', 'id_kompetensi', 'tahun']);
         });
     }

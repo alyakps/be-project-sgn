@@ -61,6 +61,7 @@ class HardCompetencyController extends Controller
         $query = HardCompetency::forNik($nik)
             ->forYear($tahun)
             ->search($search)
+            ->where('is_active', true) // ✅ ADDED (agar data canceled tidak tampil)
             ->orderBy('nilai', 'desc');
 
         $paginator = $query->paginate($perPage);
@@ -102,6 +103,7 @@ class HardCompetencyController extends Controller
             ->when($nik !== '', fn ($q) => $q->forNik($nik))
             ->forYear($tahun)
             ->search($search)
+            ->where('is_active', true) // ✅ ADDED (agar data canceled tidak tampil)
             ->orderBy('nik')
             ->orderByDesc('nilai');
 

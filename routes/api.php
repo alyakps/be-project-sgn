@@ -64,6 +64,10 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/employee-profiles', [EmployeeProfileController::class, 'adminIndex']);
     Route::get('/karyawan/{nik}/profile', [EmployeeProfileController::class, 'adminShowByNik']);
     Route::get('/import-logs', [AdminController::class, 'importLogs']);
+
+    // ✅ TAMBAHAN MINIMAL: Cancel import log (batalkan import)
+    Route::post('/import-cancel/{nik}', [AdminController::class, 'cancelImportLog']);
+
     Route::put('/karyawan/{nik}', [AdminController::class, 'updateKaryawan']);
 
     /*

@@ -9,18 +9,26 @@ return new class extends Migration {
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('nik', 32)->unique(); // 🔹 NIK unik untuk tiap user
+
+            $table->string('nik', 32)->unique();
             $table->string('name');
-            $table->string('unit_kerja')->nullable();                       // dipakai import Excel
+            $table->string('unit_kerja')->nullable();
             $table->string('email')->unique();
             $table->string('password');
 
-            // ✅ Tambahan: flag wajib ganti password setelah reset admin
+            // ✅ untuk fitur "Batalkan": user hasil import bisa dinonaktifkan
+            $table->boolean('is_active')->default(true)->index();
+
+            // ✅ tag asal import (TIDAK pakai FK untuk hindari circular dependency)
+            $table->unsignedBigInteger('import_log_id')->nullable()->index();
+
+            // wajib ganti password setelah reset admin
             $table->boolean('must_change_password')->default(false);
 
             $table->string('role')->default('karyawan');  // admin / karyawan
             $table->timestamp('email_verified_at')->nullable();
             $table->rememberToken();
+
             $table->timestamps();
         });
     }

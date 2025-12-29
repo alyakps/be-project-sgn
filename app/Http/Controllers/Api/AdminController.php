@@ -15,16 +15,11 @@ use App\Http\Requests\AdminUpdateEmployeeRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 
 class AdminController extends Controller
 {
-    /**
-     * Ambil jenis kompetensi dari request dengan toleransi:
-     * - field: jenis_kompetensi | type | competency_type | kompetensi_type | kompetensi | jenis
-     * - value: soft | hard | soft_competency | hard_competency | "soft competency" | "hard competency"
-     * Return: 'soft' | 'hard'
-     */
     private function resolveJenisKompetensi(Request $request, string $default): string
     {
         $candidates = [
@@ -46,7 +41,7 @@ class AdminController extends Controller
         }
 
         $jenis = strtolower(trim($raw));
-        $jenis = str_replace(['-', ' '], '_', $jenis); // "soft competency" -> soft_competency
+        $jenis = str_replace(['-', ' '], '_', $jenis);
 
         if (in_array($jenis, ['soft', 'soft_competency'], true)) return 'soft';
         if (in_array($jenis, ['hard', 'hard_competency'], true)) return 'hard';
@@ -54,59 +49,68 @@ class AdminController extends Controller
         return $default;
     }
 
-    /**
-     * Jalankan import kompetensi sesuai jenis, lalu catat log.
-     */
-    private function handleCompetencyImport(Request $request, int $tahun, string $jenis): array
+    private function createImportLogAndStoreFile(Request $request, string $typeLog, ?int $tahun): ImportLog
     {
-        if ($jenis === 'soft') {
-            $import  = new SoftCompetencyImport($tahun);
-            $typeLog = 'soft_competency';
-        } else {
-            $import  = new HardCompetencyImport($tahun);
-            $typeLog = 'hard_competency';
+        $storedPath = null;
+
+        try {
+            $storedPath = $request->file('file')->store('imports', 'public');
+        } catch (\Throwable $e) {
+            Log::warning('STORE IMPORT FILE FAILED', ['err' => $e->getMessage()]);
         }
 
-        Excel::import($import, $request->file('file'));
-
-        $failures = collect($import->failures())->map(fn ($f) => [
-            'row'    => $f->row(),
-            'errors' => $f->errors(),
-            'values' => $f->values(),
-        ])->values();
-
-        $log = ImportLog::create([
+        return ImportLog::create([
             'filename'    => $request->file('file')->getClientOriginalName(),
+            'stored_path' => $storedPath,
             'type'        => $typeLog,
             'tahun'       => $tahun,
-            'sukses'      => (int) $import->getImportedCount(),
-            'gagal'       => (int) $failures->count(),
+            'sukses'      => 0,
+            'gagal'       => 0,
+            'status'      => 'done',
             'uploaded_by' => (int) $request->user()->id,
         ]);
-
-        return [(int) $import->getImportedCount(), $failures, (int) $log->id, $typeLog];
     }
-
-    /* ======================================================
-     * IMPORT KARYAWAN
-     * ====================================================== */
 
     public function importKaryawan(Request $request)
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx,xls,csv']
+            'file' => ['required', 'file', 'mimes:xlsx,xls,csv'],
         ]);
 
         if (!$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        $log = $this->createImportLogAndStoreFile($request, 'karyawan', (int) date('Y'));
+
         try {
-            $import = new KaryawanImport();
+            $import = new KaryawanImport((int) $log->id);
             Excel::import($import, $request->file('file'));
         } catch (\Throwable $e) {
-            Log::error('IMPORT KARYAWAN ERROR', ['err' => $e->getMessage()]);
-            return response()->json(['message' => 'Terjadi error saat import karyawan.'], 500);
+            Log::error('IMPORT KARYAWAN ERROR', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
+            $log->update([
+                'sukses' => 0,
+                'gagal'  => 1,
+            ]);
+
+            if (config('app.debug')) {
+                return response()->json([
+                    'message'       => 'Terjadi error saat import karyawan.',
+                    'error'         => $e->getMessage(),
+                    'at'            => $e->getFile() . ':' . $e->getLine(),
+                    'import_log_id' => $log->id,
+                ], 500);
+            }
+
+            return response()->json([
+                'message'       => 'Terjadi error saat import karyawan.',
+                'import_log_id' => $log->id,
+            ], 500);
         }
 
         $failures = collect($import->failures())->map(fn ($f) => [
@@ -115,38 +119,31 @@ class AdminController extends Controller
             'values' => $f->values(),
         ])->values();
 
-        $log = null;
-        try {
-            $log = ImportLog::create([
-                'filename'    => $request->file('file')->getClientOriginalName(),
-                'type'        => 'karyawan',
-                'tahun'       => (int) date('Y'),
-                'sukses'      => (int) $import->getImportedCount(),
-                'gagal'       => (int) $failures->count(),
-                'uploaded_by' => (int) $request->user()->id,
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('IMPORT LOG CREATE FAILED (KARYAWAN)', ['err' => $e->getMessage()]);
-        }
+        $rowErrors = collect($import->getRowErrors())->values();
+
+        $gagalCount = (int) $failures->count() + (int) $rowErrors->count();
+
+        $log->update([
+            'sukses' => (int) $import->getImportedCount(),
+            'gagal'  => $gagalCount,
+        ]);
+
+        $statusCode = ($gagalCount > 0) ? 422 : 200;
 
         return response()->json([
-            'message' => 'Proses import selesai.',
-            'sukses'  => $import->getImportedCount(),
-            'gagal'   => $failures,
-            'import_log_id' => $log?->id,
-        ]);
+            'message'       => 'Proses import selesai.',
+            'sukses'        => $import->getImportedCount(),
+            'gagal'         => $failures,
+            'row_errors'    => $rowErrors,
+            'import_log_id' => $log->id,
+        ], $statusCode);
     }
-
-    /* ======================================================
-     * IMPORT HARD COMPETENCY
-     * ====================================================== */
 
     public function importHardCompetencies(Request $request)
     {
         $request->validate([
             'file'  => ['required', 'file', 'mimes:xlsx,xls,csv'],
             'tahun' => ['required', 'integer', 'min:2000', 'max:2100'],
-            // jangan maksa jenis_kompetensi di sini, karena FE kamu kemungkinan pakai nama field lain
         ]);
 
         if (!$request->user()->isAdmin()) {
@@ -155,42 +152,51 @@ class AdminController extends Controller
 
         $tahun = (int) $request->tahun;
 
-        // ✅ ambil dari request kalau ada, kalau tidak fallback hard (karena endpoint hard)
         $jenis = $this->resolveJenisKompetensi($request, 'hard');
+        $typeLog = ($jenis === 'soft') ? 'soft_competency' : 'hard_competency';
 
-        // DEBUG ringan biar ketauan endpoint mana yang kepanggil dan jenis apa yang kebaca
-        Log::info('IMPORT COMPETENCY HIT', [
-            'endpoint' => 'importHardCompetencies',
-            'path' => $request->path(),
-            'jenis_final' => $jenis,
-            'jenis_raw_candidates' => $request->only([
-                'jenis_kompetensi','type','competency_type','kompetensi_type','kompetensi','jenis'
-            ]),
-        ]);
+        $log = $this->createImportLogAndStoreFile($request, $typeLog, $tahun);
 
         try {
-            [$sukses, $failures, $logId, $typeLog] = $this->handleCompetencyImport($request, $tahun, $jenis);
+            $import = ($jenis === 'soft')
+                ? new SoftCompetencyImport($tahun, (int) $log->id)
+                : new HardCompetencyImport($tahun, (int) $log->id);
+
+            Excel::import($import, $request->file('file'));
+
+            $failures = collect($import->failures())->map(fn ($f) => [
+                'row'    => $f->row(),
+                'errors' => $f->errors(),
+                'values' => $f->values(),
+            ])->values();
+
+            $log->update([
+                'sukses' => (int) $import->getImportedCount(),
+                'gagal'  => (int) $failures->count(),
+            ]);
+
+            return response()->json([
+                'message'       => 'Proses import selesai.',
+                'jenis_final'   => $jenis,
+                'type_log'      => $typeLog,
+                'sukses'        => (int) $import->getImportedCount(),
+                'gagal'         => $failures,
+                'import_log_id' => $log->id,
+            ], $failures->count() > 0 ? 422 : 200);
         } catch (\Throwable $e) {
             Log::error('IMPORT COMPETENCY ERROR (HARD ENDPOINT)', [
                 'jenis_final' => $jenis,
-                'err' => $e->getMessage(),
+                'err'         => $e->getMessage(),
             ]);
-            return response()->json(['message' => 'Terjadi error saat import competency.'], 500);
+
+            $log->update(['sukses' => 0, 'gagal' => 1]);
+
+            return response()->json([
+                'message'       => 'Terjadi error saat import competency.',
+                'import_log_id' => $log->id,
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'Proses import selesai.',
-            'jenis_final' => $jenis,
-            'type_log' => $typeLog,
-            'sukses'  => $sukses,
-            'gagal'   => $failures,
-            'import_log_id' => $logId,
-        ]);
     }
-
-    /* ======================================================
-     * IMPORT SOFT COMPETENCY
-     * ====================================================== */
 
     public function importSoftCompetencies(Request $request)
     {
@@ -205,41 +211,148 @@ class AdminController extends Controller
 
         $tahun = (int) $request->tahun;
 
-        // ✅ ambil dari request kalau ada, kalau tidak fallback soft (karena endpoint soft)
         $jenis = $this->resolveJenisKompetensi($request, 'soft');
+        $typeLog = ($jenis === 'hard') ? 'hard_competency' : 'soft_competency';
 
-        Log::info('IMPORT COMPETENCY HIT', [
-            'endpoint' => 'importSoftCompetencies',
-            'path' => $request->path(),
-            'jenis_final' => $jenis,
-            'jenis_raw_candidates' => $request->only([
-                'jenis_kompetensi','type','competency_type','kompetensi_type','kompetensi','jenis'
-            ]),
-        ]);
+        $log = $this->createImportLogAndStoreFile($request, $typeLog, $tahun);
 
         try {
-            [$sukses, $failures, $logId, $typeLog] = $this->handleCompetencyImport($request, $tahun, $jenis);
+            $import = ($jenis === 'hard')
+                ? new HardCompetencyImport($tahun, (int) $log->id)
+                : new SoftCompetencyImport($tahun, (int) $log->id);
+
+            Excel::import($import, $request->file('file'));
+
+            $failures = collect($import->failures())->map(fn ($f) => [
+                'row'    => $f->row(),
+                'errors' => $f->errors(),
+                'values' => $f->values(),
+            ])->values();
+
+            $log->update([
+                'sukses' => (int) $import->getImportedCount(),
+                'gagal'  => (int) $failures->count(),
+            ]);
+
+            return response()->json([
+                'message'       => 'Proses import selesai.',
+                'jenis_final'   => $jenis,
+                'type_log'      => $typeLog,
+                'sukses'        => (int) $import->getImportedCount(),
+                'gagal'         => $failures,
+                'import_log_id' => $log->id,
+            ], $failures->count() > 0 ? 422 : 200);
         } catch (\Throwable $e) {
             Log::error('IMPORT COMPETENCY ERROR (SOFT ENDPOINT)', [
                 'jenis_final' => $jenis,
-                'err' => $e->getMessage(),
+                'err'         => $e->getMessage(),
             ]);
-            return response()->json(['message' => 'Terjadi error saat import competency.'], 500);
+
+            $log->update(['sukses' => 0, 'gagal' => 1]);
+
+            return response()->json([
+                'message'       => 'Terjadi error saat import competency.',
+                'import_log_id' => $log->id,
+            ], 500);
+        }
+    }
+
+    // ✅ UBAH MINIMAL DI SINI: route param tetap {nik} tapi dipakai sebagai import_log_id (angka)
+    public function cancelImportLog(Request $request, string $nik)
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if (!ctype_digit($nik)) {
+            return response()->json([
+                'message' => 'Parameter nik harus angka (import_log_id).',
+            ], 422);
+        }
+
+        $id = (int) $nik;
+
+        $log = ImportLog::query()->find($id);
+        if (!$log) {
+            return response()->json(['message' => 'Import log tidak ditemukan.'], 404);
+        }
+
+        if ($log->status === 'canceled') {
+            return response()->json([
+                'message' => 'Import sudah dibatalkan.',
+                'data' => ['id' => $log->id, 'status' => 'canceled'],
+            ], 200);
+        }
+
+        DB::transaction(function () use ($request, $log) {
+            if ($log->type === 'karyawan') {
+                User::query()
+                    ->where('import_log_id', $log->id)
+                    ->update(['is_active' => false]);
+            }
+
+            if ($log->type === 'hard_competency') {
+                DB::table('hard_competencies')
+                    ->where('import_log_id', $log->id)
+                    ->update(['is_active' => false]);
+            }
+
+            if ($log->type === 'soft_competency') {
+                DB::table('soft_competencies')
+                    ->where('import_log_id', $log->id)
+                    ->update(['is_active' => false]);
+            }
+
+            $log->update([
+                'status'      => 'canceled',
+                'canceled_at' => now(),
+                'canceled_by' => (int) $request->user()->id,
+            ]);
+        });
+
+        if ($log->stored_path) {
+            try {
+                Storage::disk('public')->delete($log->stored_path);
+            } catch (\Throwable $e) {
+                Log::warning('DELETE IMPORT FILE FAILED', ['id' => $log->id, 'err' => $e->getMessage()]);
+            }
         }
 
         return response()->json([
-            'message' => 'Proses import selesai.',
-            'jenis_final' => $jenis,
-            'type_log' => $typeLog,
-            'sukses'  => $sukses,
-            'gagal'   => $failures,
-            'import_log_id' => $logId,
+            'message' => 'Import berhasil dibatalkan. Data terkait sudah dinonaktifkan.',
+            'data' => [
+                'id'     => $log->id,
+                'status' => 'canceled',
+            ],
         ]);
     }
 
-    /* ======================================================
-     * LIST KARYAWAN
-     * ====================================================== */
+    public function importLogs(Request $request)
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $logs = ImportLog::query()
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json([
+            'data' => $logs->map(function (ImportLog $log) {
+                return [
+                    'id'          => $log->id,
+                    'filename'    => $log->filename,
+                    'type'        => $log->type,
+                    'tahun'       => $log->tahun,
+                    'sukses'      => $log->sukses,
+                    'gagal'       => $log->gagal,
+                    'status'      => $log->status,
+                    'canceled_at' => optional($log->canceled_at)?->format('Y-m-d H:i:s'),
+                    'created_at'  => optional($log->created_at)->format('Y-m-d H:i:s'),
+                ];
+            }),
+        ]);
+    }
 
     public function listKaryawan(Request $request)
     {
@@ -250,16 +363,22 @@ class AdminController extends Controller
         $perPage = (int) $request->get('per_page', 10);
         $search  = trim((string) $request->get('q', ''));
 
+        // ✅ PATCH MINIMAL:
+        // default hanya tampilkan active
+        // untuk lihat nonaktif, pakai ?include_inactive=1
+        $includeInactive = $request->boolean('include_inactive', false);
+
         $paginator = User::query()
             ->where('role', 'karyawan')
+            ->when(!$includeInactive, fn($q) => $q->where('is_active', true)) // ✅ ADDED
             ->when($search !== '', function ($q) use ($search) {
-                $q->where(fn ($w) =>
+                $q->where(function ($w) use ($search) {
                     $w->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('nik', 'like', "%{$search}%")
-                );
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('nik', 'like', "%{$search}%");
+                });
             })
-            ->select('id', 'name', 'email', 'nik', 'unit_kerja', 'created_at')
+            ->select('id', 'name', 'email', 'nik', 'unit_kerja', 'is_active', 'created_at')
             ->orderByDesc('id')
             ->paginate($perPage);
 
@@ -273,10 +392,6 @@ class AdminController extends Controller
             ],
         ]);
     }
-
-    /* ======================================================
-     * CREATE KARYAWAN
-     * ====================================================== */
 
     public function storeKaryawan(CreateEmployeeRequest $request)
     {
@@ -295,6 +410,7 @@ class AdminController extends Controller
                     'role'       => $data['role'],
                     'unit_kerja' => $data['unit_kerja'] ?? null,
                     'password'   => Hash::make($data['password']),
+                    'is_active'  => true,
                 ]);
 
                 EmployeeProfile::create([
@@ -303,8 +419,6 @@ class AdminController extends Controller
                     'nik'              => $data['nik'],
                     'email_pribadi'    => $data['email'],
                     'jabatan_terakhir' => $data['jabatan_terakhir'] ?? null,
-
-                    // ✅ FIX: langsung sinkron dari awal
                     'unit_kerja'       => $user->unit_kerja,
                 ]);
             });
@@ -315,10 +429,6 @@ class AdminController extends Controller
 
         return response()->json(['message' => 'Karyawan berhasil dibuat.'], 201);
     }
-
-    /* ======================================================
-     * UPDATE PROFIL KARYAWAN (ADMIN)
-     * ====================================================== */
 
     public function updateKaryawan(AdminUpdateEmployeeRequest $request, string $nik)
     {
@@ -336,7 +446,6 @@ class AdminController extends Controller
         }
 
         DB::transaction(function () use ($request, $user) {
-            // ✅ FIX: jangan set unit_kerja jadi null kalau FE tidak mengirim fieldnya
             $newUnitKerja = $request->has('unit_kerja') ? $request->unit_kerja : $user->unit_kerja;
 
             $user->update([
@@ -352,17 +461,11 @@ class AdminController extends Controller
                 'email_pribadi' => $user->email,
             ]);
 
-            // ✅ FIX: jangan biarkan request menimpa unit_kerja pada profile
             $profile->fill($request->except(['photo', 'unit_kerja']));
-
-            // ✅ single source of truth
             $profile->unit_kerja = $user->unit_kerja;
-
-            // jaga konsistensi field dasar
-            $profile->nama_lengkap  = $user->name;
+            $profile->nama_lengkap = $user->name;
             $profile->email_pribadi = $user->email;
-            $profile->nik           = $user->nik;
-
+            $profile->nik = $user->nik;
             $profile->save();
         });
 
@@ -376,10 +479,6 @@ class AdminController extends Controller
             ],
         ]);
     }
-
-    /* ======================================================
-     * DELETE KARYAWAN
-     * ====================================================== */
 
     public function deleteKaryawan(Request $request, string $nik)
     {
@@ -398,10 +497,6 @@ class AdminController extends Controller
         return response()->json(['message' => 'Karyawan berhasil dihapus.']);
     }
 
-    /* ======================================================
-     * RESET PASSWORD
-     * ====================================================== */
-
     public function resetKaryawanPassword(Request $request, string $nik)
     {
         if (!$request->user()->isAdmin()) {
@@ -416,44 +511,13 @@ class AdminController extends Controller
 
         $defaultPassword = '123';
 
-        // ✅ FIX: harus hash biar bisa login
         $user->password = Hash::make($defaultPassword);
-
-        // ✅ Trigger: wajib ganti password setelah reset admin
         $user->must_change_password = true;
-
         $user->save();
 
         return response()->json([
             'message' => 'Password karyawan berhasil direset.',
             'default_password' => $defaultPassword,
-        ]);
-    }
-
-    /* ======================================================
-     * IMPORT LOGS
-     * ====================================================== */
-
-    public function importLogs(Request $request)
-    {
-        if (!$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $logs = ImportLog::query()
-            ->orderByDesc('id')
-            ->get();
-
-        return response()->json([
-            'data' => $logs->map(function (ImportLog $log) {
-                return [
-                    'id'         => $log->id,
-                    'filename'   => $log->filename,
-                    'type'       => $log->type,
-                    'tahun'      => $log->tahun,
-                    'created_at' => optional($log->created_at)->format('Y-m-d H:i:s'),
-                ];
-            }),
         ]);
     }
 }
