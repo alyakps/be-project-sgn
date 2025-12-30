@@ -58,13 +58,16 @@ class SoftCompetencyImport implements
         return trim((string) ($v ?? ''));
     }
 
+    /**
+     * NOTE:
+     * - Jangan trim nol di belakang (bisa ubah NIK)
+     * - Handle ".0" dari Excel
+     */
     private function normalizeNik(string $nik): string
     {
         $nik = trim($nik);
-        if ($nik !== '' && is_numeric($nik)) {
-            $nik = rtrim(rtrim((string) $nik, '0'), '.');
-        }
         $nik = preg_replace('/\s+/', '', $nik) ?? $nik;
+        $nik = preg_replace('/\.0+$/', '', $nik) ?? $nik;
         return $nik;
     }
 
@@ -94,6 +97,19 @@ class SoftCompetencyImport implements
             return null;
         }
 
+        // ✅ PENTING: match unique DB soft_competencies (nik + id_kompetensi + tahun)
+        // Migration kamu id_kompetensi TIDAK nullable → kalau kosong harus skip
+        if ($idKom === '') {
+            $this->rowErrors[] = [
+                'row' => $this->getRowNumber(),
+                'message' => 'id_kompetensi kosong (baris di-skip agar tidak overwrite & sesuai unique).',
+                'nik' => $nik,
+                'kode' => $kode,
+                'nama' => $nama,
+            ];
+            return null;
+        }
+
         $nilai = null;
         if ($nilaiRaw !== '') {
             if (is_numeric($nilaiRaw)) $nilai = (int) round((float) $nilaiRaw);
@@ -101,9 +117,9 @@ class SoftCompetencyImport implements
 
         try {
             $uniqueKey = [
-                'nik'   => $nik,
-                'tahun' => $this->tahun,
-                'kode'  => $kode !== '' ? $kode : ($nama !== '' ? $nama : 'UNKNOWN'),
+                'nik'           => $nik,
+                'tahun'         => $this->tahun,
+                'id_kompetensi' => $idKom,
             ];
 
             SoftCompetency::updateOrCreate(
@@ -111,7 +127,7 @@ class SoftCompetencyImport implements
                 [
                     'nik'             => $nik,
                     'tahun'           => $this->tahun,
-                    'id_kompetensi'   => $idKom !== '' ? $idKom : null,
+                    'id_kompetensi'   => $idKom,
                     'kode'            => $kode,
                     'nama_kompetensi' => $nama,
                     'status'          => $status !== '' ? $status : null,
@@ -128,6 +144,7 @@ class SoftCompetencyImport implements
             Log::warning('SOFT COMPETENCY ROW ERROR', [
                 'row' => $this->getRowNumber(),
                 'nik' => $nik,
+                'id_kompetensi' => $idKom,
                 'err' => $e->getMessage(),
             ]);
 
@@ -135,6 +152,7 @@ class SoftCompetencyImport implements
                 'row' => $this->getRowNumber(),
                 'message' => $e->getMessage(),
                 'nik' => $nik,
+                'id_kompetensi' => $idKom,
                 'kode' => $kode,
             ];
             return null;

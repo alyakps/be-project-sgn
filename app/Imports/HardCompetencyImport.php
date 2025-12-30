@@ -58,17 +58,20 @@ class HardCompetencyImport implements
         return trim((string) ($v ?? ''));
     }
 
+    /**
+     * NOTE:
+     * - Jangan trim nol di belakang (ini bikin NIK berubah)
+     * - Tetap handle kasus Excel bikin ".0" di belakang
+     */
     private function normalizeNik(string $nik): string
     {
         $nik = trim($nik);
 
-        // kalau excel bikin jadi 1.3221E+10 atau ada .0
-        if ($nik !== '' && is_numeric($nik)) {
-            $nik = rtrim(rtrim((string) $nik, '0'), '.');
-        }
-
         // remove spasi dll
         $nik = preg_replace('/\s+/', '', $nik) ?? $nik;
+
+        // handle trailing .0 dari excel (mis: 8010632550.0)
+        $nik = preg_replace('/\.0+$/', '', $nik) ?? $nik;
 
         return $nik;
     }
@@ -84,7 +87,7 @@ class HardCompetencyImport implements
         $kSubJob  = $this->resolveKey($row, ['sub_job_family_kompetensi', 'sub job family', 'sub_job_family']);
         $kStatus  = $this->resolveKey($row, ['status']);
         $kNilai   = $this->resolveKey($row, ['nilai', 'score', 'skor']);
-        $kDesk    = $this->resolveKey($row, ['deskripsi', 'description', 'keterangan']);
+        $kDesk    = $this->resolveKey($row, ['deskripsi_kompetensi', 'deskripsi', 'description', 'keterangan']); // ✅ tambah alias
 
         $nik   = $this->normalizeNik($kNik ? $this->asString($row[$kNik] ?? '') : '');
         $kode  = $kKode ? $this->asString($row[$kKode] ?? '') : '';
@@ -104,6 +107,19 @@ class HardCompetencyImport implements
             return null;
         }
 
+        // ✅ jika id_kompetensi kosong, kita skip supaya tidak ketiban record lain
+        // (di file real kamu, kode tidak unik; pembeda paling aman adalah id_kompetensi)
+        if ($idKom === '') {
+            $this->rowErrors[] = [
+                'row' => $this->getRowNumber(),
+                'message' => 'id_kompetensi kosong (baris di-skip agar tidak overwrite).',
+                'nik' => $nik,
+                'kode' => $kode,
+                'nama' => $nama,
+            ];
+            return null;
+        }
+
         // nilai boleh kosong → null
         $nilai = null;
         if ($nilaiRaw !== '') {
@@ -112,29 +128,32 @@ class HardCompetencyImport implements
         }
 
         try {
-            // ✅ benar-benar simpan ke DB
-            // key unik: nik + tahun + kode (kalau kode kosong, fallback pakai nama)
+            /**
+             * ✅ FIX UTAMA:
+             * File Excel kamu punya banyak baris dengan kode yang sama untuk NIK yang sama.
+             * Jadi unique key HARUS pakai id_kompetensi, bukan kode.
+             */
             $uniqueKey = [
-                'nik'   => $nik,
-                'tahun' => $this->tahun,
-                'kode'  => $kode !== '' ? $kode : ($nama !== '' ? $nama : 'UNKNOWN'),
+                'nik'           => $nik,
+                'tahun'         => $this->tahun,
+                'id_kompetensi' => $idKom,
             ];
 
             HardCompetency::updateOrCreate(
                 $uniqueKey,
                 [
-                    'nik'                     => $nik,
-                    'tahun'                   => $this->tahun,
-                    'id_kompetensi'           => $idKom !== '' ? $idKom : null,
-                    'kode'                    => $kode,
-                    'nama_kompetensi'         => $nama,
-                    'job_family_kompetensi'   => $job !== '' ? $job : null,
-                    'sub_job_family_kompetensi'=> $sub !== '' ? $sub : null,
-                    'status'                  => $status !== '' ? $status : null,
-                    'nilai'                   => $nilai,
-                    'deskripsi'               => $desk !== '' ? $desk : null,
-                    'is_active'               => true,
-                    'import_log_id'           => $this->importLogId,
+                    'nik'                       => $nik,
+                    'tahun'                     => $this->tahun,
+                    'id_kompetensi'             => $idKom,
+                    'kode'                      => $kode,
+                    'nama_kompetensi'           => $nama,
+                    'job_family_kompetensi'     => $job !== '' ? $job : null,
+                    'sub_job_family_kompetensi' => $sub !== '' ? $sub : null,
+                    'status'                    => $status !== '' ? $status : null,
+                    'nilai'                     => $nilai,
+                    'deskripsi'                 => $desk !== '' ? $desk : null,
+                    'is_active'                 => true,
+                    'import_log_id'             => $this->importLogId,
                 ]
             );
 
@@ -144,6 +163,7 @@ class HardCompetencyImport implements
             Log::warning('HARD COMPETENCY ROW ERROR', [
                 'row' => $this->getRowNumber(),
                 'nik' => $nik,
+                'id_kompetensi' => $idKom,
                 'err' => $e->getMessage(),
             ]);
 
@@ -151,6 +171,7 @@ class HardCompetencyImport implements
                 'row' => $this->getRowNumber(),
                 'message' => $e->getMessage(),
                 'nik' => $nik,
+                'id_kompetensi' => $idKom,
                 'kode' => $kode,
             ];
             return null;
@@ -161,9 +182,9 @@ class HardCompetencyImport implements
     {
         // Dengan WithHeadingRow, key di rules harus sesuai header file.
         // Tapi karena header kamu bisa beda-beda, kita bikin minimal strict:
-        // validasi utama kita lakukan manual (nik kosong, dsb).
+        // validasi utama kita lakukan manual (nik/id_kompetensi kosong, dsb).
         return [
-            '*.nik' => ['nullable'], // biar tidak memblok semua baris kalau header beda
+            '*.nik' => ['nullable'],
         ];
     }
 

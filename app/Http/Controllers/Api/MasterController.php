@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 
 class MasterController extends Controller
 {
     /**
      * GET /api/master/unit-kerja
-     * Mengembalikan daftar unit kerja dari CSV.
+     * Mengembalikan daftar unit kerja dari DATABASE (distinct).
+     * Kalau DB kosong, fallback ke CSV.
      *
      * Response:
      * {
@@ -17,37 +19,46 @@ class MasterController extends Controller
      */
     public function unitKerja()
     {
-        // relative dari folder storage/app
-        $relativePath = 'master/unit_kerja.csv';
+        // 1) Ambil dari DB dulu (dibatasi: karyawan aktif)
+        $dbList = User::query()
+            ->where('role', 'karyawan')      // ✅ biar relevan dengan listKaryawan
+            ->where('is_active', true)       // ✅ biar dropdown match default list (active only)
+            ->whereNotNull('unit_kerja')
+            ->where('unit_kerja', '!=', '')
+            ->distinct()
+            ->orderBy('unit_kerja')
+            ->pluck('unit_kerja')
+            ->values()
+            ->all();
 
-        // full path di filesystem (otomatis pakai separator yang benar untuk Windows/Linux)
+        if (count($dbList) > 0) {
+            return response()->json([
+                'data' => $dbList,
+            ]);
+        }
+
+        // 2) Fallback: baca dari CSV (logic lama tetap dipakai)
+        $relativePath = 'master/unit_kerja.csv';
         $fullPath = storage_path('app/' . $relativePath);
 
-        // 🔍 Debug 1: cek file beneran ada di sini
         if (!file_exists($fullPath)) {
             return response()->json([
                 'data'    => [],
-                'message' => 'File unit_kerja.csv tidak ditemukan di path: ' . $fullPath,
+                'message' => 'DB unit_kerja kosong dan file unit_kerja.csv tidak ditemukan di path: ' . $fullPath,
             ], 404);
         }
 
-        // 🔍 Debug 2: baca isinya
         $content = trim(file_get_contents($fullPath));
         if ($content === '') {
             return response()->json([
                 'data' => [],
-                'message' => 'File unit_kerja.csv kosong.',
+                'message' => 'DB unit_kerja kosong dan file unit_kerja.csv kosong.',
             ]);
         }
 
-        // Pecah baris aman untuk Windows/Linux (CRLF / LF / CR)
         $lines = preg_split("/\r\n|\n|\r/", $content);
-
-        // Konversi tiap baris ke array CSV
         $rows = array_map('str_getcsv', $lines);
 
-        // Buang header kalau memang baris pertama header (opsional)
-        // Kalau file kamu TIDAK pakai header, hapus 3 baris berikut:
         $firstRow = $rows[0] ?? null;
         if ($firstRow && stripos($firstRow[0] ?? '', 'unit') !== false) {
             array_shift($rows);
@@ -55,9 +66,7 @@ class MasterController extends Controller
 
         $list = [];
         foreach ($rows as $row) {
-            if (!is_array($row) || count($row) === 0) {
-                continue;
-            }
+            if (!is_array($row) || count($row) === 0) continue;
 
             $nama = $row[0] ?? null;
             $nama = $nama !== null ? trim($nama) : null;

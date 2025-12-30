@@ -354,44 +354,49 @@ class AdminController extends Controller
         ]);
     }
 
-    public function listKaryawan(Request $request)
-    {
-        if (!$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $perPage = (int) $request->get('per_page', 10);
-        $search  = trim((string) $request->get('q', ''));
-
-        // ✅ PATCH MINIMAL:
-        // default hanya tampilkan active
-        // untuk lihat nonaktif, pakai ?include_inactive=1
-        $includeInactive = $request->boolean('include_inactive', false);
-
-        $paginator = User::query()
-            ->where('role', 'karyawan')
-            ->when(!$includeInactive, fn($q) => $q->where('is_active', true)) // ✅ ADDED
-            ->when($search !== '', function ($q) use ($search) {
-                $q->where(function ($w) use ($search) {
-                    $w->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%")
-                        ->orWhere('nik', 'like', "%{$search}%");
-                });
-            })
-            ->select('id', 'name', 'email', 'nik', 'unit_kerja', 'is_active', 'created_at')
-            ->orderByDesc('id')
-            ->paginate($perPage);
-
-        return response()->json([
-            'data' => $paginator->items(),
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'per_page'     => $paginator->perPage(),
-                'total'        => $paginator->total(),
-                'last_page'    => $paginator->lastPage(),
-            ],
-        ]);
+public function listKaryawan(Request $request)
+{
+    if (!$request->user()->isAdmin()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
     }
+
+    $perPage = (int) $request->get('per_page', 10);
+    $search  = trim((string) $request->get('q', ''));
+
+    // ✅ filter unit kerja (baru)
+    $unitKerja = trim((string) $request->get('unit_kerja', ''));
+
+    // ✅ PATCH MINIMAL:
+    // default hanya tampilkan active
+    // untuk lihat nonaktif, pakai ?include_inactive=1
+    $includeInactive = $request->boolean('include_inactive', false);
+
+    $paginator = User::query()
+        ->where('role', 'karyawan')
+        ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
+        ->when($search !== '', function ($q) use ($search) {
+            $q->where(function ($w) use ($search) {
+                $w->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('nik', 'like', "%{$search}%");
+            });
+        })
+        // ✅ filter unit kerja (baru)
+        ->when($unitKerja !== '', fn($q) => $q->where('unit_kerja', $unitKerja))
+        ->select('id', 'name', 'email', 'nik', 'unit_kerja', 'is_active', 'created_at')
+        ->orderByDesc('id')
+        ->paginate($perPage);
+
+    return response()->json([
+        'data' => $paginator->items(),
+        'meta' => [
+            'current_page' => $paginator->currentPage(),
+            'per_page'     => $paginator->perPage(),
+            'total'        => $paginator->total(),
+            'last_page'    => $paginator->lastPage(),
+        ],
+    ]);
+}
 
     public function storeKaryawan(CreateEmployeeRequest $request)
     {

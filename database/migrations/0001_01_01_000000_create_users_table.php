@@ -16,16 +16,20 @@ return new class extends Migration {
             $table->string('email')->unique();
             $table->string('password');
 
-            // ✅ untuk fitur "Batalkan": user hasil import bisa dinonaktifkan
+            // ✅ untuk nonaktifkan user (cancel import / disable account)
             $table->boolean('is_active')->default(true)->index();
 
-            // ✅ tag asal import (TIDAK pakai FK untuk hindari circular dependency)
+            /**
+             * ✅ Track import:
+             * - import_log_id: tag "terakhir diimport/diperbarui" (opsional)
+             * - created_import_log_id: tag "dibuat oleh import tertentu" (UNTUK CANCEL PRESISI)
+             */
             $table->unsignedBigInteger('import_log_id')->nullable()->index();
+            $table->unsignedBigInteger('created_import_log_id')->nullable()->index();
 
-            // wajib ganti password setelah reset admin
             $table->boolean('must_change_password')->default(false);
 
-            $table->string('role')->default('karyawan');  // admin / karyawan
+            $table->string('role')->default('karyawan'); // admin / karyawan
             $table->timestamp('email_verified_at')->nullable();
             $table->rememberToken();
 

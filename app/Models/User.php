@@ -12,7 +12,6 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
-    // 🔹 tambahkan unit_kerja di fillable
     protected $fillable = [
         'nik',
         'name',
@@ -21,7 +20,12 @@ class User extends Authenticatable
         'role',
         'unit_kerja',
 
-        // ✅ Tambahan
+        // ✅ Tambahan penting untuk import & cancel
+        'is_active',
+        'import_log_id',
+        'created_import_log_id',
+
+        // ✅ existing
         'must_change_password',
     ];
 
@@ -31,10 +35,11 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed', // string otomatis di-hash
-
-            // ✅ Tambahan
+            'password' => 'hashed',
             'must_change_password' => 'boolean',
+
+            // ✅
+            'is_active' => 'boolean',
         ];
     }
 
@@ -43,7 +48,6 @@ class User extends Authenticatable
         return $this->role === 'admin';
     }
 
-    // 1 user punya 1 profile
     public function profile()
     {
         return $this->hasOne(EmployeeProfile::class);

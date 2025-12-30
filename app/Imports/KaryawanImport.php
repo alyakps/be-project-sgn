@@ -5,6 +5,7 @@ namespace App\Imports;
 use App\Models\User;
 use App\Models\EmployeeProfile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
@@ -37,52 +38,91 @@ class KaryawanImport implements
         $this->importLogId = $importLogId;
     }
 
+    /**
+     * Cari key asli di $row dengan daftar alias (case-insensitive)
+     */
     private function resolveKey(array $row, array $aliases): ?string
     {
         $normalized = [];
         foreach ($row as $k => $_) {
-            $normalized[trim(mb_strtolower($k))] = $k;
+            $normalized[trim(mb_strtolower((string) $k))] = (string) $k;
         }
 
         foreach ($aliases as $alias) {
-            $key = trim(mb_strtolower($alias));
-            if (isset($normalized[$key])) {
-                return $normalized[$key];
-            }
+            $key = trim(mb_strtolower((string) $alias));
+            if (isset($normalized[$key])) return $normalized[$key];
         }
+
         return null;
+    }
+
+    private function asString($v): string
+    {
+        return trim((string)($v ?? ''));
+    }
+
+    /**
+     * Normalisasi NIK:
+     * - hilangkan spasi
+     * - handle angka excel yang jadi "12345.0"
+     * - TIDAK ngilangin 0 belakang yang valid
+     */
+    private function normalizeNik(string $nik): string
+    {
+        $nik = preg_replace('/\s+/', '', trim($nik)) ?? trim($nik);
+
+        // kasus umum excel: "12345.0"
+        if (preg_match('/^\d+\.0$/', $nik)) {
+            $nik = preg_replace('/\.0$/', '', $nik) ?? $nik;
+        }
+
+        // kasus scientific (mis. 1.2345E+15) -> susah 100% akurat tanpa formatter,
+        // tapi minimal kita biarkan apa adanya, dan error-kan kalau jadi tidak digit.
+        return $nik;
     }
 
     public function model(array $row)
     {
-        $kNik       = $this->resolveKey($row, ['nik', 'NIK']);
-        $kNama      = $this->resolveKey($row, ['nama', 'name']);
-        $kEmail     = $this->resolveKey($row, ['email', 'e-mail', 'e_mail']);
+        // alias header fleksibel
+        $kNik       = $this->resolveKey($row, ['nik', 'NIK', 'no_induk', 'no_induk_karyawan']);
+        $kNama      = $this->resolveKey($row, ['nama', 'name', 'nama_karyawan', 'nama lengkap', 'nama_lengkap']);
+        $kEmail     = $this->resolveKey($row, ['email', 'e-mail', 'e_mail', 'email_kantor']);
         $kPass      = $this->resolveKey($row, ['password', 'kata sandi', 'sandi', 'pwd']);
-        $kUnitKerja = $this->resolveKey($row, ['unit_kerja', 'unit kerja', 'unit']);
+        $kUnitKerja = $this->resolveKey($row, ['unit_kerja', 'unit kerja', 'unit', 'unitkerja']);
 
-        $nik       = $kNik       ? (string)($row[$kNik]       ?? '') : '';
-        $name      = $kNama      ? (string)($row[$kNama]      ?? '') : '';
-        $email     = $kEmail     ? (string)($row[$kEmail]     ?? '') : '';
-        $pass      = $kPass      ? (string)($row[$kPass]      ?? '') : '';
-        $unitKerja = $kUnitKerja ? (string)($row[$kUnitKerja] ?? '') : '';
-
-        $nik       = trim($nik);
-        $name      = trim($name);
-        $email     = trim($email);
-        $pass      = trim($pass);
-        $unitKerja = trim($unitKerja);
-
-        if ($nik !== '' && is_numeric($nik)) {
-            $nik = rtrim(rtrim((string) $nik, '0'), '.');
-        }
+        $nik       = $this->normalizeNik($kNik ? $this->asString($row[$kNik] ?? '') : '');
+        $name      = $kNama ? $this->asString($row[$kNama] ?? '') : '';
+        $email     = $kEmail ? $this->asString($row[$kEmail] ?? '') : '';
+        $pass      = $kPass ? $this->asString($row[$kPass] ?? '') : '';
+        $unitKerja = $kUnitKerja ? $this->asString($row[$kUnitKerja] ?? '') : '';
 
         if ($pass === '') $pass = 'password123';
 
-        if ($nik === '') {
+        // ✅ validasi minimal manual
+        if ($nik === '' || !preg_match('/^\d+$/', $nik)) {
             $this->rowErrors[] = [
                 'row' => $this->getRowNumber(),
-                'message' => 'NIK kosong.',
+                'message' => 'NIK kosong / tidak valid (harus angka). Baris di-skip.',
+                'nik' => $nik,
+                'email' => $email,
+            ];
+            return null;
+        }
+
+        if ($name === '') {
+            $this->rowErrors[] = [
+                'row' => $this->getRowNumber(),
+                'message' => 'Nama kosong. Baris di-skip.',
+                'nik' => $nik,
+                'email' => $email,
+            ];
+            return null;
+        }
+
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->rowErrors[] = [
+                'row' => $this->getRowNumber(),
+                'message' => 'Email kosong / format tidak valid. Baris di-skip.',
                 'nik' => $nik,
                 'email' => $email,
             ];
@@ -90,9 +130,9 @@ class KaryawanImport implements
         }
 
         try {
-            // ✅ PRODUCTION SAFE: jangan update user yang sudah ada
+            // jangan update user existing (production-safe)
             $existsByNik = User::query()->where('nik', $nik)->exists();
-            $existsByEmail = ($email !== '') ? User::query()->where('email', $email)->exists() : false;
+            $existsByEmail = User::query()->where('email', $email)->exists();
 
             if ($existsByNik || $existsByEmail) {
                 $this->rowErrors[] = [
@@ -105,28 +145,35 @@ class KaryawanImport implements
             }
 
             $user = User::create([
-                'nik'          => $nik,
-                'name'         => $name,
-                'email'        => $email,
-                'password'     => Hash::make($pass),
-                'role'         => 'karyawan',
-                'unit_kerja'   => $unitKerja,
-                'is_active'    => true,
-                'import_log_id'=> $this->importLogId,
+                'nik'           => $nik,
+                'name'          => $name,
+                'email'         => $email,
+                'password'      => Hash::make($pass),
+                'role'          => 'karyawan',
+                'unit_kerja'    => $unitKerja !== '' ? $unitKerja : null,
+                'is_active'     => true,
+                'import_log_id' => $this->importLogId,
             ]);
 
             EmployeeProfile::create([
-                'user_id'        => $user->id,
-                'nama_lengkap'   => $user->name,
-                'nik'            => $user->nik,
-                'email_pribadi'  => $user->email,
-                'unit_kerja'     => $user->unit_kerja,
-                'import_log_id'  => $this->importLogId,
+                'user_id'       => $user->id,
+                'nama_lengkap'  => $user->name,
+                'nik'           => $user->nik,
+                'email_pribadi' => $user->email,
+                'unit_kerja'    => $user->unit_kerja,
+                'import_log_id' => $this->importLogId,
             ]);
 
             $this->imported++;
             return null;
         } catch (\Throwable $e) {
+            Log::warning('KARYAWAN ROW ERROR', [
+                'row' => $this->getRowNumber(),
+                'nik' => $nik,
+                'email' => $email,
+                'err' => $e->getMessage(),
+            ]);
+
             $this->rowErrors[] = [
                 'row' => $this->getRowNumber(),
                 'message' => $e->getMessage(),
@@ -139,27 +186,15 @@ class KaryawanImport implements
 
     public function rules(): array
     {
+        // ✅ Longgarkan agar header bervariasi tidak memblok semua baris
         return [
-            '*.nik'        => ['required', 'regex:/^\d+$/'],
-            '*.nama'       => ['required_without:*.name'],
-            '*.name'       => ['required_without:*.nama'],
-            '*.email'      => ['required', 'email'],
-            '*.password'   => ['nullable', 'string', 'min:6'],
-            '*.unit_kerja' => ['nullable', 'string', 'max:100'],
+            '*.nik' => ['nullable'],
         ];
     }
 
     public function customValidationMessages(): array
     {
-        return [
-            '*.nik.required' => 'Kolom NIK wajib diisi.',
-            '*.nik.regex'    => 'NIK hanya boleh berisi angka.',
-            '*.nama.required_without' => 'Kolom nama atau name wajib diisi.',
-            '*.name.required_without' => 'Kolom name atau nama wajib diisi.',
-            '*.email.required' => 'Kolom email wajib diisi.',
-            '*.email.email'    => 'Format email tidak valid.',
-            '*.password.min'   => 'Password minimal 6 karakter.',
-        ];
+        return [];
     }
 
     public function getImportedCount(): int { return $this->imported; }

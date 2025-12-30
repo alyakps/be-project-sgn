@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\SoftCompetencyResource;
 use App\Models\SoftCompetency;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SoftCompetencyController extends Controller
 {
@@ -31,7 +32,7 @@ class SoftCompetencyController extends Controller
         // 0) AMBIL DAFTAR TAHUN YANG ADA UNTUK USER INI
         // =========================
         $availableYears = SoftCompetency::forNik($user->nik)
-            ->where('is_active', true) // ✅ ADDED
+            ->where('is_active', true)
             ->selectRaw('DISTINCT tahun')
             ->orderByDesc('tahun')
             ->pluck('tahun')
@@ -43,7 +44,7 @@ class SoftCompetencyController extends Controller
         // =========================
         $allRows = SoftCompetency::forNik($user->nik)
             ->forYear($tahun)
-            ->where('is_active', true) // ✅ ADDED
+            ->where('is_active', true)
             ->orderBy('kode')
             ->get();
 
@@ -52,7 +53,7 @@ class SoftCompetencyController extends Controller
                 'data' => [
                     'nik'             => $user->nik,
                     'tahun'           => $tahun,
-                    'available_years' => $availableYears, // ⬅️ KIRIM JUGA LIST TAHUN
+                    'available_years' => $availableYears,
                     'chart'           => [],
                     'items'           => [],
                 ],
@@ -73,7 +74,7 @@ class SoftCompetencyController extends Controller
 
         // Hitung rata-rata per id_kompetensi (semua karyawan)
         $avgByKom = SoftCompetency::forYear($tahun)
-            ->where('is_active', true) // ✅ ADDED
+            ->where('is_active', true)
             ->whereIn('id_kompetensi', $allRows->pluck('id_kompetensi'))
             ->selectRaw('id_kompetensi, AVG(nilai) as avg_nilai')
             ->groupBy('id_kompetensi')
@@ -109,7 +110,7 @@ class SoftCompetencyController extends Controller
         // =========================
         $itemsQuery = SoftCompetency::forNik($user->nik)
             ->forYear($tahun)
-            ->where('is_active', true) // ✅ ADDED
+            ->where('is_active', true)
             ->orderBy('kode');
 
         $paginator = $itemsQuery->paginate($perPage);
@@ -130,7 +131,7 @@ class SoftCompetencyController extends Controller
             'data' => [
                 'nik'             => $user->nik,
                 'tahun'           => $tahun,
-                'available_years' => $availableYears, // ⬅️ DIKIRIM KE FRONTEND
+                'available_years' => $availableYears,
                 'chart'           => $chart,
                 'items'           => $items,
             ],
@@ -163,7 +164,7 @@ class SoftCompetencyController extends Controller
         // 0) AMBIL DAFTAR TAHUN YANG ADA UNTUK NIK INI
         // =========================
         $availableYears = SoftCompetency::forNik($nik)
-            ->where('is_active', true) // ✅ ADDED
+            ->where('is_active', true)
             ->selectRaw('DISTINCT tahun')
             ->orderByDesc('tahun')
             ->pluck('tahun')
@@ -175,7 +176,7 @@ class SoftCompetencyController extends Controller
         // =========================
         $allRows = SoftCompetency::forNik($nik)
             ->forYear($tahun)
-            ->where('is_active', true) // ✅ ADDED
+            ->where('is_active', true)
             ->orderBy('kode')
             ->get();
 
@@ -207,7 +208,7 @@ class SoftCompetencyController extends Controller
         // 2) Hitung rata-rata per id_kompetensi (semua karyawan di tahun tsb)
         // =========================
         $avgByKom = SoftCompetency::forYear($tahun)
-            ->where('is_active', true) // ✅ ADDED
+            ->where('is_active', true)
             ->whereIn('id_kompetensi', $allRows->pluck('id_kompetensi'))
             ->selectRaw('id_kompetensi, AVG(nilai) as avg_nilai')
             ->groupBy('id_kompetensi')
@@ -243,7 +244,7 @@ class SoftCompetencyController extends Controller
         // =========================
         $itemsQuery = SoftCompetency::forNik($nik)
             ->forYear($tahun)
-            ->where('is_active', true) // ✅ ADDED
+            ->where('is_active', true)
             ->orderBy('kode');
 
         $paginator = $itemsQuery->paginate($perPage);
@@ -287,29 +288,69 @@ class SoftCompetencyController extends Controller
      * (ADMIN ONLY)
      *
      * GET /api/admin/soft-competencies
+     *
+     * ✅ FIX: endpoint ini sekarang ngasih list PER NIK (grouped)
+     * supaya kompetensi yang di-import duluan tetap muncul walau user belum ada.
+     *
+     * Query Params:
+     * - q=... (search nik / user_name / email)
+     * - nik=... (filter nik exact/like)
+     * - tahun=... (optional)
+     * - per_page=...
      */
     public function adminIndex(Request $request)
     {
         $search  = trim((string) $request->get('q', ''));
         $nik     = trim((string) $request->get('nik', ''));
         $perPage = (int) $request->get('per_page', 10);
+        if ($perPage < 1) $perPage = 10;
+        if ($perPage > 200) $perPage = 200;
+
         $tahun   = $request->integer('tahun'); // bisa null
 
         $query = SoftCompetency::query()
-            ->where('is_active', true) // ✅ ADDED
-            ->when($nik !== '', fn ($q) => $q->forNik($nik))
-            ->forYear($tahun)
-            ->search($search)
-            ->orderBy('nik')
-            ->orderBy('kode');
+            ->from('soft_competencies as sc')
+            ->where('sc.is_active', true)
+            ->when($tahun, fn ($q) => $q->where('sc.tahun', $tahun))
+            ->when($nik !== '', fn ($q) => $q->where('sc.nik', 'like', "%{$nik}%"))
+            ->leftJoin('users as u', function ($join) {
+                $join->on('u.nik', '=', 'sc.nik')
+                     ->where('u.role', '=', 'karyawan');
+            })
+            ->when($search !== '', function ($q) use ($search) {
+                $q->where(function ($w) use ($search) {
+                    $w->where('sc.nik', 'like', "%{$search}%")
+                      ->orWhere('u.name', 'like', "%{$search}%")
+                      ->orWhere('u.email', 'like', "%{$search}%");
+                });
+            })
+            ->select([
+                'sc.nik',
+                DB::raw('MAX(sc.tahun) as latest_year'),
+                DB::raw('COUNT(*) as total_items'),
+                DB::raw('MAX(u.id) as user_id'),
+                DB::raw('MAX(u.name) as user_name'),
+                DB::raw('MAX(u.email) as user_email'),
+                DB::raw('CASE WHEN MAX(u.id) IS NULL THEN 0 ELSE 1 END as has_user'),
+            ])
+            ->groupBy('sc.nik')
+            ->orderByDesc(DB::raw('MAX(sc.tahun)'))
+            ->orderBy('sc.nik');
 
         $paginator = $query->paginate($perPage);
 
-        $items = SoftCompetencyResource::collection($paginator->items())->resolve();
-
         return response()->json([
-            'data'  => $items,
-            'meta'  => [
+            'data' => collect($paginator->items())->map(function ($r) {
+                return [
+                    'nik'         => $r->nik,
+                    'has_user'    => (bool) $r->has_user,
+                    'user_name'   => $r->user_name,
+                    'user_email'  => $r->user_email,
+                    'latest_year' => (int) $r->latest_year,
+                    'total_items' => (int) $r->total_items,
+                ];
+            })->values(),
+            'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'per_page'     => $paginator->perPage(),
                 'total'        => $paginator->total(),
@@ -336,7 +377,7 @@ class SoftCompetencyController extends Controller
         $query = SoftCompetency::forNik($nik)
             ->forYear($tahun)
             ->search($search)
-            ->where('is_active', true) // ✅ ADDED
+            ->where('is_active', true)
             ->orderBy('kode');
 
         $paginator = $query->paginate($perPage);
